@@ -1,0 +1,170 @@
+@import "tailwindcss";
+
+/* SuzuPay Color Scheme - Matching Original */
+:root {
+  /* Base colors */
+  --background: 0 0% 100%;
+  --foreground: 0 0% 3.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 0 0% 3.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 0 0% 3.9%;
+  --primary: 0 0% 9%;
+  --primary-foreground: 0 0% 98%;
+  --secondary: 0 0% 96.1%;
+  --secondary-foreground: 0 0% 9%;
+  --muted: 0 0% 96.1%;
+  --muted-foreground: 0 0% 45.1%;
+  --accent: 0 0% 96.1%;
+  --accent-foreground: 0 0% 9%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 0 0% 89.8%;
+  --input: 0 0% 89.8%;
+  --ring: 0 0% 3.9%;
+  --radius: 0.5rem;
+  
+  /* SuzuPay Custom Colors (RGB for alpha support) */
+  --color-primary-500: 99 102 241;  /* Indigo */
+  --color-primary-600: 79 70 229;
+  --color-accent-500: 236 72 153;   /* Pink */
+  --color-bg-900: 3 7 18;           /* Dark background */
+  --color-surface-800: 17 24 39;    /* Card surfaces */
+  --color-surface-700: 31 41 55;    /* Elevated surfaces */
+  --color-text-high: 249 250 251;   /* Primary text */
+  --color-text-med: 156 163 175;    /* Secondary text */
+  --color-text-low: 107 114 128;    /* Tertiary text */
+  --color-error: 239 68 68;         /* Error red */
+  --color-success: 34 197 94;       /* Success green */
+  --color-warning: 234 179 8;       /* Warning yellow */
+}
+
+/* Dark mode (default for SuzuPay) */
+.dark, :root {
+  --background: 222 47% 4%;        /* bg-900 equivalent */
+  --foreground: 210 40% 98%;
+  --card: 222 47% 7%;              /* surface-800 */
+  --card-foreground: 210 40% 98%;
+  --popover: 222 47% 7%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 239 84% 67%;          /* Indigo-500 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 222 47% 11%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 222 47% 11%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 330 81% 60%;           /* Pink accent */
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 62.8% 50%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 222 47% 14%;
+  --input: 222 47% 14%;
+  --ring: 239 84% 67%;
+  
+  /* Chart colors */
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+}
+
+/* Tailwind v4 theme inline */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* Base layer */
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Utility classes for SuzuPay colors */
+@layer utilities {
+  .bg-bg-900 {
+    background-color: rgb(var(--color-bg-900));
+  }
+  .bg-surface-800 {
+    background-color: rgb(var(--color-surface-800));
+  }
+  .bg-surface-700 {
+    background-color: rgb(var(--color-surface-700));
+  }
+  .text-text-high {
+    color: rgb(var(--color-text-high));
+  }
+  .text-text-med {
+    color: rgb(var(--color-text-med));
+  }
+  .text-text-low {
+    color: rgb(var(--color-text-low));
+  }
+  .text-primary-500 {
+    color: rgb(var(--color-primary-500));
+  }
+  .bg-primary-500 {
+    background-color: rgb(var(--color-primary-500));
+  }
+  .bg-primary-600 {
+    background-color: rgb(var(--color-primary-600));
+  }
+  .text-accent-500 {
+    color: rgb(var(--color-accent-500));
+  }
+  .bg-accent-500 {
+    background-color: rgb(var(--color-accent-500));
+  }
+  .text-error {
+    color: rgb(var(--color-error));
+  }
+  .text-success {
+    color: rgb(var(--color-success));
+  }
+  .text-warning {
+    color: rgb(var(--color-warning));
+  }
+  .border-surface-700 {
+    border-color: rgb(var(--color-surface-700));
+  }
+  
+  /* Gradient utilities */
+  .gradient-primary {
+    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-accent-500)));
+  }
+  .text-gradient-primary {
+    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-accent-500)));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+}
