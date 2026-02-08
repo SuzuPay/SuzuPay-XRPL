@@ -70,3 +70,6 @@ build/
 # Temporary files
 *.tmp
 *.temp
+
+# Docs folder
+Docs/
