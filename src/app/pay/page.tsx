@@ -7,6 +7,8 @@ import { useWallet } from '@/lib/wallet-context';
 import { WalletConnectButton } from '@/components/wallet-connect-button';
 import { truncateAddress, formatXRP } from '@/lib/utils';
 import { parsePaymentRequest, isValidXRPLAddress } from '@/lib/payment-request';
+import { buildPaymentTx } from '@/lib/payment';
+import { PaymentConfirmation } from '@/components/payment-confirmation';
 
 type PaymentStatus = 'idle' | 'scanned' | 'confirming' | 'signing' | 'success' | 'error';
 
@@ -96,12 +98,14 @@ export default function PayPage() {
       setStatus('signing');
 
       // Build payment transaction (amount in drops)
-      const payment = {
-        TransactionType: 'Payment',
-        Account: address,
-        Destination: parsedPayment.destination,
-        Amount: String(Math.floor(parseFloat(parsedPayment.amount) * 1_000_000)), // Convert to drops
-      };
+      // Build payment transaction (amount in drops)
+      const payment = buildPaymentTx({
+        source: address,
+        destination: parsedPayment.destination,
+        amount: parsedPayment.amount,
+        currency: 'XRP',
+        memo: parsedPayment.memo
+      });
 
       // Sign and submit using wallet
       const result = await signAndSubmit(payment);
@@ -369,35 +373,14 @@ export default function PayPage() {
             )}
 
             {/* Success State */}
-            {status === 'success' && (
-              <div className="p-6 bg-surface-800 rounded-2xl border border-success/50 text-center">
-                <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4">
-                  <CheckCircle2 className="w-8 h-8 text-success" />
-                </div>
-                <h3 className="text-2xl font-bold text-success mb-2">Payment Sent!</h3>
-                <p className="text-text-med mb-4">
-                  {parsedPayment?.amount} XRP sent successfully
-                </p>
-
-                {txHash && (
-                  <a
-                    href={`https://testnet.xrpl.org/transactions/${txHash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-sm text-primary-500 hover:underline mb-6"
-                  >
-                    View Transaction
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                )}
-
-                <button
-                  onClick={handleReset}
-                  className="w-full py-4 rounded-xl font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-all"
-                >
-                  New Payment
-                </button>
-              </div>
+            {status === 'success' && parsedPayment && (
+              <PaymentConfirmation
+                amount={parsedPayment.amount}
+                currency={parsedPayment.currency}
+                destination={parsedPayment.destination}
+                txHash={txHash || undefined}
+                onReset={handleReset}
+              />
             )}
 
             {/* Error State */}
