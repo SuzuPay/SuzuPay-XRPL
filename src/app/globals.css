@@ -109,6 +109,14 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
+/* Keep document scrollable when Crossmark approval panel opens */
+html.crossmark-open,
+body.crossmark-open {
+  overflow: auto !important;
+  overscroll-behavior: auto;
+  touch-action: auto;
+}
+
 /* Utility classes for SuzuPay colors */
 @layer utilities {
   .bg-bg-900 {

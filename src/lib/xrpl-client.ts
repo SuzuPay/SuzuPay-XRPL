@@ -26,21 +26,39 @@ export const getNetworkUrl = (): string => {
 
 // Singleton client instance
 let clientInstance: Client | null = null;
+let connectPromise: Promise<void> | null = null;
+
+async function ensureConnected(client: Client): Promise<void> {
+  if (client.isConnected()) {
+    return;
+  }
+
+  if (!connectPromise) {
+    connectPromise = client.connect()
+      .then(() => {
+        connectPromise = null;
+      })
+      .catch((error) => {
+        connectPromise = null;
+        throw error;
+      });
+  }
+
+  await connectPromise;
+}
 
 /**
  * Get or create XRPL client connection
  */
 export async function getClient(): Promise<Client> {
-  if (clientInstance && clientInstance.isConnected()) {
-    return clientInstance;
+  if (!clientInstance) {
+    const url = getNetworkUrl();
+    clientInstance = new Client(url);
   }
 
-  const url = getNetworkUrl();
-  clientInstance = new Client(url);
-  
-  await clientInstance.connect();
-  console.log(`✅ Connected to XRPL ${getCurrentNetwork()}: ${url}`);
-  
+  await ensureConnected(clientInstance);
+  console.log(`✅ Connected to XRPL ${getCurrentNetwork()}: ${getNetworkUrl()}`);
+
   return clientInstance;
 }
 
@@ -51,6 +69,7 @@ export async function disconnectClient(): Promise<void> {
   if (clientInstance && clientInstance.isConnected()) {
     await clientInstance.disconnect();
     clientInstance = null;
+    connectPromise = null;
     console.log('🔌 Disconnected from XRPL');
   }
 }

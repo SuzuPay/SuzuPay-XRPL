@@ -158,11 +158,12 @@ export async function getMPTSellOffers(account: string, mptIssuanceID: string): 
   if (!response.result.offers) return [];
 
   return response.result.offers.filter((offer: any) => {
-    // Check if TakerGets is the MPT we are looking for
-    // TakerGets can be string (XRP) or object (Token/MPT)
-    if (typeof offer.TakerGets === 'string') return false;
+    // Check if taker_gets is the MPT we are looking for
+    // Note: account_offers API returns snake_case (taker_gets, taker_pays)
+    // taker_gets can be string (XRP) or object (Token/MPT)
+    if (typeof offer.taker_gets === 'string') return false;
     
     // Check for MPT (mpt_issuance_id)
-    return offer.TakerGets.mpt_issuance_id === mptIssuanceID;
+    return offer.taker_gets.mpt_issuance_id === mptIssuanceID;
   });
 }

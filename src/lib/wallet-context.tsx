@@ -172,9 +172,35 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const result = await walletManager.signAndSubmit(transaction);
+      const result = await (walletManager as any).signAndSubmit(transaction, true);
+
+      if (!result) {
+        throw new Error('Wallet returned an empty response');
+      }
+
       return result;
     } catch (error: any) {
+      const message = error?.message || String(error);
+
+      // Crossmark sometimes surfaces an undefined response; use SDK fallback when available.
+      if (message.includes("Cannot read properties of undefined (reading 'result')")) {
+        const crossmark = (window as any)?.xrpl?.crossmark;
+        if (crossmark?.async?.signAndSubmitAndWait) {
+          try {
+            const fallback = await crossmark.async.signAndSubmitAndWait(transaction, {
+              description: 'Sign transaction in Crossmark',
+            });
+            const resp = fallback?.response?.data?.resp ?? fallback?.response?.data ?? fallback?.response ?? fallback;
+            if (resp?.result?.hash || resp?.hash) {
+              return { hash: resp.result?.hash ?? resp.hash, raw: resp };
+            }
+            return resp;
+          } catch (fallbackError) {
+            console.error('Crossmark SDK fallback failed:', fallbackError);
+          }
+        }
+      }
+
       console.error('Transaction error:', error);
       throw error;
     }
@@ -205,6 +231,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       refreshBalance();
     }
   }, [state.isConnected, state.address, refreshBalance]);
+
+  // Ensure Crossmark approval panel can scroll by avoiding any page scroll locks
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const crossmark = (window as any)?.xrpl?.crossmark;
+    if (!crossmark?.on) return;
+
+    const enableScroll = () => {
+      document.documentElement.classList.add('crossmark-open');
+      document.body.classList.add('crossmark-open');
+    };
+
+    const disableScroll = () => {
+      document.documentElement.classList.remove('crossmark-open');
+      document.body.classList.remove('crossmark-open');
+    };
+
+    crossmark.on('open', enableScroll);
+    crossmark.on('close', disableScroll);
+
+    return () => {
+      crossmark.off?.('open', enableScroll);
+      crossmark.off?.('close', disableScroll);
+      disableScroll();
+    };
+  }, []);
 
   // Get available wallet IDs from wallets array
   const availableWallets = walletManager?.wallets?.map((w: any) => w.id) || ['crossmark'];

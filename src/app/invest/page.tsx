@@ -55,8 +55,10 @@ export default function InvestPage() {
         // Calculate Price: Total XRP / Total Tokens
         // Note: This is a simplified "spot price" calculation based on the first offer
         const offer = offers[0];
-        const mptAmount = parseInt(offer.TakerGets.value, 16);
-        const xrpAmountDrops = parseInt(offer.TakerPays);
+        // account_offers returns snake_case fields (taker_gets, taker_pays)
+        // MPT values are decimal strings (not hex) per XRPL encoding standards
+        const mptAmount = parseInt(offer.taker_gets.value, 10);
+        const xrpAmountDrops = parseInt(offer.taker_pays);
         
         if (mptAmount > 0) {
            const pricePerTokenDrops = xrpAmountDrops / mptAmount;
