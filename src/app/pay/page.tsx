@@ -141,7 +141,7 @@ export default function PayPage() {
     if (!balance || !parsedPayment) return false;
     const balanceNum = parseFloat(balance);
     const amountNum = parseFloat(parsedPayment.amount);
-    return balanceNum >= amountNum + 10.00001;
+    return balanceNum >= amountNum + 3.00001;
   };
 
   return (
@@ -348,7 +348,7 @@ export default function PayPage() {
                       <CardContent className="p-4 flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
                         <p className="text-warning text-sm font-medium">
-                          Insufficient balance. You need at least {parsedPayment.amount} XRP + 10 XRP reserve.
+                          Insufficient balance. You need at least {parsedPayment.amount} XRP + 3 XRP reserve.
                         </p>
                       </CardContent>
                     </Card>
