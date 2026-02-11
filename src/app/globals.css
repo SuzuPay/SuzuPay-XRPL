@@ -147,6 +147,28 @@ body.crossmark-open {
   .bg-primary-600 { background-color: rgb(var(--color-primary-600)); }
   .bg-accent-500 { background-color: rgb(var(--color-accent-500)); }
 
+  /* Glassmorphism */
+  .glass {
+    background: rgba(24, 24, 32, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  
+  .glass-card {
+    background: linear-gradient(145deg, rgba(35, 35, 46, 0.4) 0%, rgba(24, 24, 32, 0.6) 100%);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  }
+
+  /* Glows */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px rgba(255, 79, 112, 0.3);
+  }
+  .glow-text {
+    text-shadow: 0 0 10px rgba(255, 79, 112, 0.5);
+  }
+
   /* Text colors */
   .text-text-high { color: rgb(var(--color-text-high)); }
   .text-text-med { color: rgb(var(--color-text-med)); }
@@ -171,6 +193,9 @@ body.crossmark-open {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+  .bg-gradient-dark {
+    background: radial-gradient(circle at 50% 0%, #1a1a24 0%, #0e0e15 100%);
   }
 
   /* Scrollbar hide */

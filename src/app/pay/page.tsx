@@ -165,18 +165,18 @@ export default function PayPage() {
         ) : (
           <div className="space-y-6">
             {/* Balance Card */}
-            <Card className="bg-surface-800 border-surface-700">
-              <CardContent className="p-4">
+            <Card className="glass-card border-0">
+              <CardContent className="p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-text-low mb-1">Your Balance</p>
-                    <p className="text-xl font-bold text-text-high">
-                      {balance ? formatXRP(balance) : '0'} <span className="text-sm text-text-med">XRP</span>
+                    <p className="text-xs text-text-low mb-1 font-medium uppercase tracking-wider">Your Balance</p>
+                    <p className="text-2xl font-bold text-text-high drop-shadow-md">
+                      {balance ? formatXRP(balance) : '0'} <span className="text-sm text-text-med font-normal">XRP</span>
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-text-low mb-1">Address</p>
-                    <p className="font-mono text-sm text-text-med">{truncateAddress(address!)}</p>
+                    <p className="text-xs text-text-low mb-1 font-medium uppercase tracking-wider">Address</p>
+                    <p className="font-mono text-sm text-text-med bg-surface-900/50 px-2 py-1 rounded-md border border-white/5">{truncateAddress(address!)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -184,15 +184,15 @@ export default function PayPage() {
 
             {/* Idle State - Scan/Enter QR */}
             {status === 'idle' && !quickPayMode && (
-              <div className="space-y-4">
-                <Card className="bg-surface-800 border-surface-700">
+              <div className="space-y-4 animate-fade-in">
+                <Card className="glass-card border-0 shadow-lg shadow-primary-500/5">
                   <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center">
-                        <Camera className="w-5 h-5 text-primary-500" />
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-2xl bg-primary-500/15 flex items-center justify-center glow-primary">
+                        <Camera className="w-6 h-6 text-primary-500" />
                       </div>
                       <div>
-                        <CardTitle className="text-lg">Scan QR Code</CardTitle>
+                        <CardTitle className="text-xl font-bold">Scan QR Code</CardTitle>
                         <CardDescription className="text-text-med">Paste payment QR data below</CardDescription>
                       </div>
                     </div>
@@ -203,13 +203,13 @@ export default function PayPage() {
                       onChange={(e) => setManualQRInput(e.target.value)}
                       placeholder="Paste Xaman URL or payment JSON here..."
                       rows={4}
-                      className="w-full px-4 py-3 bg-surface-700 border border-surface-700 rounded-xl text-text-high placeholder-text-low focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all resize-none font-mono text-sm"
+                      className="w-full px-4 py-3 bg-surface-900/50 border border-white/5 rounded-xl text-text-high placeholder-text-low focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all resize-none font-mono text-sm"
                     />
 
                     <Button
                       onClick={handleParseQR}
                       disabled={!manualQRInput.trim()}
-                      className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-[rgba(255,79,112,0.2)] gap-2"
+                      className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 gap-2 transition-all hover:scale-[1.02]"
                     >
                       <QrCode className="w-5 h-5" />
                       Parse Payment
@@ -217,25 +217,25 @@ export default function PayPage() {
                   </CardContent>
                 </Card>
 
-                <div className="flex items-center gap-4">
-                  <Separator className="flex-1 bg-surface-700" />
-                  <span className="text-text-low text-sm">or</span>
-                  <Separator className="flex-1 bg-surface-700" />
+                <div className="flex items-center gap-4 my-2">
+                  <Separator className="flex-1 bg-surface-700/50" />
+                  <span className="text-text-low text-xs uppercase tracking-widest font-medium">or</span>
+                  <Separator className="flex-1 bg-surface-700/50" />
                 </div>
 
                 <Button
                   variant="outline"
                   onClick={() => setQuickPayMode(true)}
-                  className="w-full h-12 rounded-xl font-semibold border-surface-700 text-text-high hover:bg-surface-800"
+                  className="w-full h-12 rounded-xl font-semibold border-2 border-surface-700 bg-transparent text-text-high hover:bg-surface-800 hover:border-surface-600 transition-all"
                 >
                   Enter Payment Manually
                 </Button>
 
                 {error && (
-                  <Card className="bg-[rgb(var(--color-error))]/10 border-[rgb(var(--color-error))]/30">
+                  <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                     <CardContent className="p-4 flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
-                      <p className="text-error text-sm">{error}</p>
+                      <p className="text-error text-sm font-medium">{error}</p>
                     </CardContent>
                   </Card>
                 )}
@@ -243,22 +243,22 @@ export default function PayPage() {
             )}
 
             {/* Quick Pay Mode - Manual Entry */}
-            {status === 'idle' && quickPayMode && (
-              <Card className="bg-surface-800 border-surface-700">
+            {quickPayMode && (status === 'idle') && (
+              <Card className="glass-card border-0 animate-fade-in">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">Quick Pay</CardTitle>
+                    <CardTitle className="text-xl font-bold">Quick Pay</CardTitle>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setQuickPayMode(false)}
-                      className="text-text-med hover:text-text-high"
+                      className="text-text-med hover:text-text-high hover:bg-surface-800"
                     >
                       Cancel
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-text-med mb-2">
                       Destination Address
@@ -268,7 +268,7 @@ export default function PayPage() {
                       value={quickPayAddress}
                       onChange={(e) => setQuickPayAddress(e.target.value)}
                       placeholder="rXXXX..."
-                      className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl font-mono"
+                      className="bg-surface-900/50 border-white/5 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl font-mono"
                     />
                   </div>
 
@@ -283,23 +283,23 @@ export default function PayPage() {
                       placeholder="0.00"
                       min="0"
                       step="0.000001"
-                      className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
+                      className="bg-surface-900/50 border-white/5 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
                     />
                   </div>
 
                   <Button
                     onClick={handleQuickPay}
                     disabled={!quickPayAddress || !quickPayAmount}
-                    className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-[rgba(255,79,112,0.2)]"
+                    className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 transition-all hover:scale-[1.02]"
                   >
                     Continue
                   </Button>
 
                   {error && (
-                    <Card className="bg-[rgb(var(--color-error))]/10 border-[rgb(var(--color-error))]/30">
+                    <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
-                        <p className="text-error text-sm">{error}</p>
+                        <p className="text-error text-sm font-medium">{error}</p>
                       </CardContent>
                     </Card>
                   )}
@@ -309,58 +309,66 @@ export default function PayPage() {
 
             {/* Scanned - Confirm Payment */}
             {status === 'scanned' && parsedPayment && (
-              <Card className="bg-surface-800 border-surface-700">
-                <CardHeader className="text-center">
-                  <CardTitle className="text-lg">Confirm Payment</CardTitle>
+              <Card className="glass-card border-0 animate-fade-in shadow-2xl shadow-primary-500/10">
+                <CardHeader className="text-center pb-2">
+                  <div className="w-16 h-16 rounded-full bg-surface-900/50 flex items-center justify-center mx-auto mb-4 border border-white/5">
+                    <Send className="w-8 h-8 text-primary-500" />
+                  </div>
+                  <CardTitle className="text-xl font-bold">Confirm Payment</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-4 bg-surface-700/50 rounded-xl space-y-3">
-                    <div className="flex justify-between">
-                      <span className="text-text-low">To</span>
-                      <span className="font-mono text-text-high">{truncateAddress(parsedPayment.destination)}</span>
+                <CardContent className="space-y-6">
+                  <div className="p-5 bg-surface-900/60 rounded-2xl space-y-4 border border-white/5">
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-low text-sm font-medium">To</span>
+                      <span className="font-mono text-text-high bg-surface-800 px-2 py-1 rounded text-sm">{truncateAddress(parsedPayment.destination)}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-low">Amount</span>
-                      <span className="text-text-high font-semibold">{parsedPayment.amount} {parsedPayment.currency}</span>
+                    <Separator className="bg-white/5" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-low text-sm font-medium">Amount</span>
+                      <span className="text-text-high font-bold text-lg">{parsedPayment.amount} <span className="text-sm font-normal text-text-med">{parsedPayment.currency}</span></span>
                     </div>
                     {parsedPayment.memo && (
-                      <div className="flex justify-between">
-                        <span className="text-text-low">Memo</span>
-                        <span className="text-text-med text-sm">{parsedPayment.memo}</span>
+                      <>
+                      <Separator className="bg-white/5" />
+                      <div className="flex justify-between items-center">
+                        <span className="text-text-low text-sm font-medium">Memo</span>
+                        <span className="text-text-med text-sm italic">{parsedPayment.memo}</span>
                       </div>
+                      </>
                     )}
-                    <div className="flex justify-between">
-                      <span className="text-text-low">Network Fee</span>
-                      <span className="text-text-med">~0.00001 XRP</span>
+                    <Separator className="bg-white/5" />
+                    <div className="flex justify-between items-center">
+                      <span className="text-text-low text-sm font-medium">Network Fee</span>
+                      <span className="text-text-med text-xs">~0.00001 XRP</span>
                     </div>
                   </div>
 
                   {!hasSufficientBalance() && (
-                    <Card className="bg-[rgb(var(--color-warning))]/10 border-[rgb(var(--color-warning))]/30">
+                    <Card className="glass-card border-l-4 border-l-[rgb(var(--color-warning))] bg-[rgb(var(--color-warning))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
-                        <p className="text-warning text-sm">
+                        <p className="text-warning text-sm font-medium">
                           Insufficient balance. You need at least {parsedPayment.amount} XRP + 10 XRP reserve.
                         </p>
                       </CardContent>
                     </Card>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <Button
                       variant="outline"
                       onClick={handleReset}
-                      className="flex-1 h-12 rounded-xl font-semibold border-surface-700 text-text-med hover:bg-surface-700"
+                      className="h-12 rounded-xl font-semibold border-surface-700 text-text-med hover:bg-surface-800 hover:text-text-high transition-colors"
                     >
                       Cancel
                     </Button>
                     <Button
                       onClick={handleConfirmPayment}
                       disabled={!hasSufficientBalance()}
-                      className="flex-1 h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white gap-2"
+                      className="h-12 rounded-xl font-bold bg-primary-500 hover:bg-primary-600 text-white gap-2 shadow-lg shadow-primary-500/20 transition-all hover:scale-105"
                     >
                       <Send className="w-4 h-4" />
-                      Send
+                      Send Now
                     </Button>
                   </div>
                 </CardContent>
@@ -369,43 +377,40 @@ export default function PayPage() {
 
             {/* Confirming/Signing State */}
             {(status === 'confirming' || status === 'signing') && (
-              <Card className="bg-surface-800 border-surface-700">
-                <CardContent className="p-6 text-center">
-                  <Loader2 className="w-12 h-12 text-primary-500 animate-spin mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-text-high mb-2">
-                    {status === 'confirming' ? 'Preparing Transaction...' : 'Sign in your wallet'}
+              <Card className="glass-card border-0 animate-pulse">
+                <CardContent className="p-8 text-center">
+                  <div className="relative w-16 h-16 mx-auto mb-6">
+                    <div className="absolute inset-0 rounded-full border-4 border-primary-500/30"></div>
+                    <div className="absolute inset-0 rounded-full border-4 border-t-primary-500 animate-spin"></div>
+                    <Loader2 className="absolute inset-0 m-auto w-8 h-8 text-primary-500 animate-pulse" />
+                  </div>
+                  <h3 className="text-xl font-bold text-text-high mb-2">
+                    {status === 'confirming' ? 'Preparing Transaction...' : 'Check Your Wallet'}
                   </h3>
-                  <p className="text-text-med text-sm">
-                    {status === 'signing' && 'Please approve the transaction in your wallet app'}
+                  <p className="text-text-med text-sm max-w-xs mx-auto">
+                    {status === 'confirming' 
+                      ? 'Constructing the payment on XRPL...' 
+                      : 'A sign request has been sent to your connected wallet. Please approve it to continue.'}
                   </p>
                 </CardContent>
               </Card>
             )}
 
-            {/* Success State */}
-            {status === 'success' && parsedPayment && (
-              <PaymentConfirmation
-                amount={parsedPayment.amount}
-                currency={parsedPayment.currency}
-                destination={parsedPayment.destination}
-                txHash={txHash || undefined}
-                onReset={handleReset}
-              />
-            )}
+            {/* Success State handled by Component */}
 
             {/* Error State */}
             {status === 'error' && (
-              <Card className="bg-surface-800 border-[rgb(var(--color-error))]/50">
-                <CardContent className="p-6 text-center">
-                  <div className="w-16 h-16 rounded-full bg-[rgb(var(--color-error))]/15 flex items-center justify-center mx-auto mb-4">
-                    <AlertCircle className="w-8 h-8 text-error" />
+              <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5 shadow-2xl shadow-[rgb(var(--color-error))]/5 animate-fade-in">
+                <CardContent className="p-8 text-center">
+                  <div className="w-20 h-20 rounded-full bg-[rgb(var(--color-error))]/10 flex items-center justify-center mx-auto mb-6 glow-text text-error">
+                    <AlertCircle className="w-10 h-10" />
                   </div>
                   <h3 className="text-2xl font-bold text-error mb-2">Payment Failed</h3>
-                  <p className="text-text-med mb-6">{error || 'Something went wrong. Please try again.'}</p>
+                  <p className="text-text-med mb-8 leading-relaxed max-w-xs mx-auto">{error || 'Something went wrong. Please try again.'}</p>
 
                   <Button
                     onClick={handleReset}
-                    className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white"
+                    className="w-full h-12 rounded-xl font-bold bg-surface-800 hover:bg-surface-700 text-text-high border border-white/5 transition-all"
                   >
                     Try Again
                   </Button>

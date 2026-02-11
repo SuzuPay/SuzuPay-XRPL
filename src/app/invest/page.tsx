@@ -183,10 +183,10 @@ export default function InvestPage() {
           </div>
           
           {searchError && (
-            <Card className="bg-[rgb(var(--color-error))]/10 border-[rgb(var(--color-error))]/20">
+            <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
               <CardContent className="p-4 flex items-center gap-3">
                 <AlertCircle className="w-5 h-5 text-error" />
-                <p className="text-error text-sm">{searchError}</p>
+                <p className="text-error text-sm font-medium">{searchError}</p>
               </CardContent>
             </Card>
           )}
@@ -195,49 +195,50 @@ export default function InvestPage() {
         {/* Campaign Details */}
         {activeToken && (
           <div className="space-y-6 animate-fade-in">
-            <Card className="bg-surface-800 border-surface-700">
+            <Card className="glass-card border-l-4 border-l-[rgb(var(--color-success))] shadow-2xl shadow-[rgb(var(--color-success))]/5">
               <CardHeader>
                 <div className="flex justify-between items-start">
                   <div>
-                    <CardTitle className="text-xl">
-                      Merchant Financing (Standard Token)
+                    <CardTitle className="text-xl font-bold flex items-center gap-2">
+                      Merchant Financing
+                      <span className="text-sm font-normal text-text-med bg-surface-900/50 px-2 py-0.5 rounded-full border border-white/5">Standard Token</span>
                     </CardTitle>
                     <CardDescription className="text-text-med mt-1 max-w-md">
                       Buy SZP tokens to fund this merchant's inventory.
                     </CardDescription>
                   </div>
-                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/15 text-success border-0 gap-1 font-medium">
+                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/10 text-success border-0 gap-1.5 font-bold px-3 py-1 animate-pulse">
                     <Activity className="w-3 h-3" />
-                    Live
+                    Live Campaign
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Stats Grid */}
                 <div className="grid grid-cols-3 gap-4">
-                  <div className="p-4 bg-surface-700/50 rounded-xl">
-                    <p className="text-xs text-text-low mb-1">Token</p>
-                    <p className="font-bold text-text-high">{activeToken.currency}</p>
+                  <div className="p-4 bg-surface-900/40 rounded-xl border border-white/5">
+                    <p className="text-[10px] uppercase tracking-wider text-text-low mb-1 font-semibold">Token</p>
+                    <p className="font-bold text-text-high tracking-tight">{activeToken.currency}</p>
                   </div>
-                  <div className="p-4 bg-surface-700/50 rounded-xl">
-                    <p className="text-xs text-text-low mb-1">Price</p>
-                    <p className="font-bold text-text-high">
+                  <div className="p-4 bg-surface-900/40 rounded-xl border border-white/5">
+                    <p className="text-[10px] uppercase tracking-wider text-text-low mb-1 font-semibold">Price</p>
+                    <p className="font-bold text-text-high tracking-tight">
                       {tokenPrice ? `${tokenPrice.toFixed(6)} XRP` : 'Calculating...'}
                     </p>
                   </div>
-                  <div className="p-4 bg-surface-700/50 rounded-xl">
-                    <p className="text-xs text-text-low mb-1">Available</p>
-                    <p className="font-bold text-text-high">
+                  <div className="p-4 bg-surface-900/40 rounded-xl border border-white/5">
+                    <p className="text-[10px] uppercase tracking-wider text-text-low mb-1 font-semibold">Available</p>
+                    <p className="font-bold text-text-high tracking-tight">
                       {parseInt(availableAmount).toLocaleString()}
                     </p>
                   </div>
                 </div>
 
                 {/* Investment Input */}
-                <div className="p-4 bg-surface-700/30 rounded-xl border border-surface-700 space-y-4">
+                <div className="p-6 bg-surface-900/30 rounded-2xl border border-white/5 space-y-4">
                   <div className="flex justify-between items-center">
                     <label className="text-sm font-medium text-text-med">Investment Amount (XRP)</label>
-                    <span className="text-xs text-text-low">
+                    <span className="text-xs text-text-low font-mono">
                       Balance: {balance ? formatXRP(balance) : '0'} XRP
                     </span>
                   </div>
@@ -249,12 +250,12 @@ export default function InvestPage() {
                       onChange={(e) => setInvestAmount(e.target.value)}
                       placeholder="0.00"
                       disabled={!isConnected}
-                      className="flex-1 bg-surface-800 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-success))] focus-visible:ring-[rgb(var(--color-success))]/20 h-12 rounded-xl"
+                      className="flex-1 bg-surface-800/50 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-success))] focus-visible:ring-[rgb(var(--color-success))]/20 h-12 rounded-xl text-lg font-medium transition-all"
                     />
                     <Button
                       onClick={handleInvest}
                       disabled={isInvesting || !investAmount || !isConnected || !tokenPrice}
-                      className="px-8 h-12 rounded-xl font-bold bg-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/90 text-white gap-2"
+                      className="px-8 h-12 rounded-xl font-bold bg-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/90 text-white gap-2 shadow-lg shadow-[rgb(var(--color-success))]/20 transition-all hover:scale-105 active:scale-95"
                     >
                       {isInvesting ? (
                         <RefreshCw className="w-5 h-5 animate-spin" />
@@ -267,9 +268,9 @@ export default function InvestPage() {
                     </Button>
                   </div>
 
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="flex justify-between items-center text-sm pt-2 border-t border-white/5">
                     <span className="text-text-med">You will receive approx:</span>
-                    <span className="font-bold text-success">
+                    <span className="font-bold text-success text-base">
                       {estimatedTokens(investAmount)} {activeToken.currency}
                     </span>
                   </div>
@@ -279,7 +280,7 @@ export default function InvestPage() {
 
             {/* Platform Benefits */}
             <div className="grid grid-cols-2 gap-4">
-              <Card className="bg-surface-800 border-surface-700">
+              <Card className="glass-card border-0 hover:bg-surface-800/60 transition-colors">
                 <CardContent className="p-5">
                   <div className="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center mb-3">
                     <Shield className="w-5 h-5 text-primary-500" />
@@ -290,7 +291,7 @@ export default function InvestPage() {
                   </p>
                 </CardContent>
               </Card>
-              <Card className="bg-surface-800 border-surface-700">
+              <Card className="glass-card border-0 hover:bg-surface-800/60 transition-colors">
                 <CardContent className="p-5">
                   <div className="w-10 h-10 rounded-xl bg-accent-500/15 flex items-center justify-center mb-3">
                     <ArrowUpRight className="w-5 h-5 text-accent-500" />

@@ -266,22 +266,25 @@ export default function MerchantPage() {
           /* Connected State */
           <div className="space-y-6">
             {/* Wallet Info Card */}
-            <Card className="bg-surface-800 border-surface-700">
+            <Card className="glass-card border-0">
               <CardHeader className="pb-4">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Your Wallet</CardTitle>
-                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/15 text-success border-0 font-medium">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-[rgb(var(--color-success))] animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]" />
+                    Your Wallet
+                  </CardTitle>
+                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/15 text-success border-0 font-bold px-3">
                     Connected
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center justify-between p-4 bg-surface-700/50 rounded-xl">
+                <div className="flex items-center justify-between p-4 bg-surface-900/40 rounded-xl border border-white/5 transition-colors hover:border-white/10">
                   <div>
-                    <p className="text-xs text-text-low mb-1">Address</p>
-                    <p className="font-mono text-text-high text-sm">{truncateAddress(address!)}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-text-low mb-1 font-semibold">Address</p>
+                    <p className="font-mono text-text-high text-sm tracking-wide">{truncateAddress(address!)}</p>
                   </div>
-                  <Button variant="ghost" size="icon" onClick={handleCopyAddress}>
+                  <Button variant="ghost" size="icon" onClick={handleCopyAddress} className="hover:bg-white/10 rounded-lg">
                     {copied ? (
                       <Check className="w-4 h-4 text-success" />
                     ) : (
@@ -290,9 +293,9 @@ export default function MerchantPage() {
                   </Button>
                 </div>
                 
-                <div className="p-4 bg-surface-700/50 rounded-xl">
-                  <p className="text-xs text-text-low mb-1">Balance</p>
-                  <p className="text-2xl font-bold text-text-high">
+                <div className="p-4 bg-surface-900/40 rounded-xl border border-white/5">
+                  <p className="text-[10px] uppercase tracking-wider text-text-low mb-1 font-semibold">Balance</p>
+                  <p className="text-3xl font-bold text-text-high tracking-tight">
                     {balance ? formatXRP(balance) : '0'} <span className="text-lg text-text-med font-normal">XRP</span>
                   </p>
                 </div>
@@ -301,16 +304,16 @@ export default function MerchantPage() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'payments' | 'financing')}>
-              <TabsList className="w-full bg-surface-800 border border-surface-700 h-auto p-1">
+              <TabsList className="w-full bg-surface-800/80 border border-surface-700/50 h-auto p-1.5 rounded-2xl backdrop-blur-sm">
                 <TabsTrigger 
                   value="payments" 
-                  className="flex-1 py-3 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg"
+                  className="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:gradient-primary data-[state=active]:text-white data-[state=active]:shadow-lg"
                 >
                   QR Payments
                 </TabsTrigger>
                 <TabsTrigger 
                   value="financing" 
-                  className="flex-1 py-3 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg"
+                  className="flex-1 py-3 text-sm font-semibold rounded-xl transition-all data-[state=active]:bg-accent-500 data-[state=active]:text-black data-[state=active]:shadow-lg"
                 >
                   Micro-Financing
                 </TabsTrigger>

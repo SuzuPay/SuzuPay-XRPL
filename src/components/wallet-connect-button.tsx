@@ -29,23 +29,24 @@ export function WalletConnectButton() {
 
   if (isConnected && address) {
     return (
-      <div className="flex items-center gap-2">
-        <div className="hidden sm:flex flex-col items-end">
-          <span className="text-xs text-text-low">{walletName || 'Connected'}</span>
-          <span className="text-sm font-mono text-text-high">{truncateAddress(address)}</span>
+      <div className="flex items-center gap-3 p-1.5 pr-2 rounded-2xl glass transition-all hover:bg-surface-700/40">
+        <div className="hidden sm:flex flex-col items-end px-2">
+          <span className="text-[10px] uppercase tracking-wider text-text-low font-medium">{walletName || 'Wallet'}</span>
+          <span className="text-sm font-mono text-text-high font-semibold">{truncateAddress(address)}</span>
         </div>
 
         {balance && (
-          <Badge variant="secondary" className="bg-surface-700 border-0 px-3 py-1.5 text-sm font-semibold text-text-high">
-            {formatXRP(balance)} <span className="text-text-med ml-1 font-normal">XRP</span>
-          </Badge>
+          <div className="bg-surface-800/50 rounded-lg px-3 py-1.5 border border-surface-700/50">
+            <span className="text-sm font-bold text-text-high">{formatXRP(balance)}</span>
+            <span className="text-xs text-text-med ml-1">XRP</span>
+          </div>
         )}
 
         <Button
           variant="ghost"
           size="icon"
           onClick={disconnect}
-          className="hover:bg-[rgb(var(--color-error))]/15 hover:text-error transition-colors"
+          className="h-8 w-8 hover:bg-error/20 hover:text-error transition-colors rounded-lg"
           title="Disconnect wallet"
         >
           <LogOut className="w-4 h-4" />
@@ -55,16 +56,16 @@ export function WalletConnectButton() {
   }
 
   return (
-    <div className="flex flex-col items-end">
+    <div className="flex flex-col items-end group">
       <Button
         onClick={() => connect()}
-        className="gap-2 bg-primary-500 hover:bg-primary-600 text-white rounded-xl font-semibold shadow-lg shadow-[rgba(255,79,112,0.2)]"
+        className="gap-2 gradient-primary text-white rounded-xl font-bold shadow-lg glow-primary hover:scale-105 active:scale-95 transition-all duration-300 border border-white/10"
       >
-        <Wallet className="w-4 h-4" />
+        <Wallet className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
         <span>Connect Wallet</span>
       </Button>
       {error && (
-        <span className="text-xs text-error mt-1 max-w-[200px] truncate">
+        <span className="text-xs text-error mt-2 font-medium bg-error/10 px-2 py-1 rounded-md animate-fade-in">
           {error}
         </span>
       )}
