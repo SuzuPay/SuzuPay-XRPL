@@ -1,5 +1,6 @@
 import { QRCodeSVG } from 'qrcode.react';
 import { generateXamanPaymentURL, generateGenericPaymentRequest } from '@/lib/payment-request';
+import { Card, CardContent } from '@/components/ui/card';
 
 interface QRGeneratorProps {
   destination: string;
@@ -36,14 +37,16 @@ export function QRGenerator({
   }
 
   return (
-    <div className="bg-white p-4 rounded-xl shadow-sm inline-block">
-      <QRCodeSVG
-        value={qrData}
-        size={size}
-        level="M"
-        includeMargin={false}
-        className="w-full h-full"
-      />
-    </div>
+    <Card className="bg-white border-0 shadow-lg shadow-black/20 inline-block overflow-hidden">
+      <CardContent className="p-4">
+        <QRCodeSVG
+          value={qrData}
+          size={size}
+          level="M"
+          includeMargin={false}
+          className="w-full h-full"
+        />
+      </CardContent>
+    </Card>
   );
 }

@@ -8,6 +8,12 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
 import type { Account } from 'xrpl-connect';
+import {
+  isCrossmarkInstalled,
+  crossmarkSignAndSubmit,
+  CrossmarkRejectedError,
+  CrossmarkExpiredError,
+} from './crossmark-sdk';
 
 // Wallet state interface
 interface WalletState {
@@ -52,8 +58,12 @@ function createWalletManager(): WalletManager {
     adapters.push(new Adapters.Xaman({ apiKey: xamanApiKey }));
   }
 
-  // Add Crossmark adapter (browser extension)
-  adapters.push(new Adapters.Crossmark());
+  // Add Crossmark adapter only if extension is installed
+  if (isCrossmarkInstalled()) {
+    adapters.push(new Adapters.Crossmark());
+  } else {
+    console.info('[WalletContext] Crossmark extension not detected, skipping adapter');
+  }
 
   // Add WalletConnect if project ID is available
   const walletConnectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
@@ -61,7 +71,7 @@ function createWalletManager(): WalletManager {
     adapters.push(new Adapters.WalletConnect({ projectId: walletConnectId }));
   }
 
-  // Fallback: if no adapters configured, just use Crossmark
+  // Fallback: if no adapters configured, add Crossmark anyway (connection will fail gracefully)
   if (adapters.length === 0) {
     adapters.push(new Adapters.Crossmark());
   }
@@ -143,9 +153,46 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const targetWalletId = walletId || defaultWalletId;
       
       console.log('[WalletContext] Connecting to wallet:', targetWalletId);
-      await walletManager.connect(targetWalletId);
+      
+      // Attempt connection via wallet manager
+      const result = await walletManager.connect(targetWalletId);
+      
+      // Validation: Ensure we actually got a connected account
+      if (!walletManager.account?.address) {
+        throw new Error('No address returned from wallet connection');
+      }
+
     } catch (error: any) {
       console.error('[WalletContext] Connection error:', error);
+      
+      // ── Crossmark Connect Fallback ────────────────────────────────
+      // If xrpl-connect fails to get the address (common with Crossmark),
+      // try to connect directly using the SDK wrapper.
+      if (isCrossmarkInstalled() && (walletId === 'crossmark' || !walletId)) {
+        console.log('[WalletContext] Attempting direct Crossmark sign-in fallback...');
+        try {
+          const { crossmarkSignIn } = await import('./crossmark-sdk');
+          const address = await crossmarkSignIn();
+          
+          if (address) {
+            console.log('[WalletContext] Direct Crossmark sign-in successful:', address);
+            // Manually update state since walletManager won't emit the event
+            setState(prev => ({
+              ...prev,
+              isConnected: true,
+              isConnecting: false,
+              address: address,
+              network: 'mainnet', // Crossmark usually defaults to mainnet, or we can check
+              walletName: 'Crossmark',
+              error: null,
+            }));
+            return;
+          }
+        } catch (fallbackError) {
+          console.error('[WalletContext] Direct Crossmark sign-in also failed:', fallbackError);
+        }
+      }
+
       setState(prev => ({
         ...prev,
         isConnecting: false,
@@ -172,7 +219,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const result = await (walletManager as any).signAndSubmit(transaction, true);
+      // Primary path: use xrpl-connect's signAndSubmit
+      const result = await (walletManager as any).signAndSubmit(transaction);
 
       if (!result) {
         throw new Error('Wallet returned an empty response');
@@ -181,27 +229,38 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return result;
     } catch (error: any) {
       const message = error?.message || String(error);
+      console.warn('[WalletContext] xrpl-connect signAndSubmit failed:', message);
 
-      // Crossmark sometimes surfaces an undefined response; use SDK fallback when available.
-      if (message.includes("Cannot read properties of undefined (reading 'result')")) {
-        const crossmark = (window as any)?.xrpl?.crossmark;
-        if (crossmark?.async?.signAndSubmitAndWait) {
-          try {
-            const fallback = await crossmark.async.signAndSubmitAndWait(transaction, {
-              description: 'Sign transaction in Crossmark',
-            });
-            const resp = fallback?.response?.data?.resp ?? fallback?.response?.data ?? fallback?.response ?? fallback;
-            if (resp?.result?.hash || resp?.hash) {
-              return { hash: resp.result?.hash ?? resp.hash, raw: resp };
-            }
-            return resp;
-          } catch (fallbackError) {
-            console.error('Crossmark SDK fallback failed:', fallbackError);
+      // ── Crossmark SDK Fix ──────────────────────────────────────────
+      // Check for known xrpl-connect/Crossmark bug: "Cannot read properties of undefined (reading 'result')"
+      // OR if Crossmark is explicitly detected.
+      const isKnownCrossmarkBug = message.includes('Cannot read properties of undefined') && message.includes('result');
+      
+      if (isCrossmarkInstalled() || isKnownCrossmarkBug) {
+        try {
+          console.log('[WalletContext] Attempting Crossmark SDK fallback...');
+          // Import dynamically if needed, or use the one we have
+          const sdkResult = await crossmarkSignAndSubmit(transaction, 'SuzuPay Transaction');
+          
+          return {
+            hash: sdkResult.hash,
+            raw: sdkResult.raw || sdkResult.meta
+          };
+        } catch (fallbackError: any) {
+          // Surface user-facing rejection/expiry as distinct errors
+          if (fallbackError instanceof CrossmarkRejectedError) {
+            throw new Error('Transaction rejected — you declined the request in Crossmark.');
           }
+          if (fallbackError instanceof CrossmarkExpiredError) {
+            throw new Error('Transaction expired — the Crossmark approval window timed out.');
+          }
+          console.error('[WalletContext] Crossmark SDK fallback failed:', fallbackError);
+          // If fallback fails, throw the fallback error, not the original
+          throw fallbackError;
         }
       }
 
-      console.error('Transaction error:', error);
+      console.error('[WalletContext] Transaction error (no fallback available):', error);
       throw error;
     }
   }, [walletManager]);

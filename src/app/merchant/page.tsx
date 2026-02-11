@@ -1,20 +1,26 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Wallet, QrCode, Copy, Check, RefreshCw, ExternalLink, Activity, Rocket, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
+import { Wallet, QrCode, Copy, Check, RefreshCw, ExternalLink, Activity, Rocket, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
 import { QRGenerator } from '@/components/qr-generator';
 import { useWallet } from '@/lib/wallet-context';
+import { PageHeader } from '@/components/page-header';
 import { WalletConnectButton } from '@/components/wallet-connect-button';
 import { truncateAddress, formatXRP } from '@/lib/utils';
 import { generateXamanPaymentURL, generateGenericPaymentRequest, generatePaymentId } from '@/lib/payment-request';
 import { subscribeToAccount } from '@/lib/xrpl-client';
 import { 
-  constructMPTIssuanceTx, 
-  constructMPTSellOfferTx, 
-  getAccountMPTIssuances, 
-  MPTIssuanceData 
-} from '@/lib/mpt-utils';
+  ensureDefaultRipple,
+  constructSellOfferTx,
+  getAccountTokens,
+  TokenInfo
+} from '@/lib/token-utils';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Separator } from '@/components/ui/separator';
 
 type PaymentStatus = 'idle' | 'waiting' | 'received' | 'expired';
 
@@ -45,21 +51,23 @@ export default function MerchantPage() {
   // Financing State
   const [financingGoal, setFinancingGoal] = useState('');
   const [isIssuingToken, setIsIssuingToken] = useState(false);
-  const [mptData, setMptData] = useState<MPTIssuanceData | null>(null);
-  const [isLoadingMpt, setIsLoadingMpt] = useState(false);
+  const [tokenData, setTokenData] = useState<TokenInfo | null>(null);
+  const [isLoadingToken, setIsLoadingToken] = useState(false);
 
   // Poll for existing MPT on load
   useEffect(() => {
     if (address && isConnected) {
-      setIsLoadingMpt(true);
-      getAccountMPTIssuances(address)
-        .then(issuances => {
-          if (issuances.length > 0) {
-            setMptData(issuances[0]);
+      setIsLoadingToken(true);
+      getAccountTokens(address)
+        .then(tokens => {
+          // Find our specific financing token if it exists
+          const fundToken = tokens.find(t => t.currency === 'SZP' || t.currency.startsWith('SZP'));
+          if (fundToken) {
+            setTokenData(fundToken);
           }
         })
         .catch(console.error)
-        .finally(() => setIsLoadingMpt(false));
+        .finally(() => setIsLoadingToken(false));
     }
   }, [address, isConnected]);
 
@@ -72,7 +80,6 @@ export default function MerchantPage() {
     const startSubscription = async () => {
       try {
         unsubscribe = await subscribeToAccount(address, (tx) => {
-          // Check if this is an incoming payment
           if (tx.transaction?.TransactionType === 'Payment' && 
               tx.transaction?.Destination === address &&
               tx.validated) {
@@ -82,7 +89,6 @@ export default function MerchantPage() {
               ? (parseInt(receivedDrops) / 1_000_000).toString()
               : '0';
             
-            // Check if amount matches (with small tolerance for fees)
             const expectedAmount = parseFloat(pendingPayment.amount);
             const actualAmount = parseFloat(receivedXRP);
             
@@ -100,7 +106,6 @@ export default function MerchantPage() {
 
     startSubscription();
 
-    // Cleanup subscription on unmount or status change
     return () => {
       if (unsubscribe) {
         unsubscribe();
@@ -126,14 +131,12 @@ export default function MerchantPage() {
     if (!amount || parseFloat(amount) <= 0 || !address) return;
 
     const paymentId = generatePaymentId();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-    // Generate Xaman-compatible URL
     const xamanPayment = generateXamanPaymentURL(address, amount, {
       network: 'XRPL',
     });
 
-    // Generate generic JSON QR (for Crossmark and other wallets)
     const genericQR = generateGenericPaymentRequest(address, amount, {
       memo: description || `SuzuPay Payment ${paymentId}`,
     });
@@ -193,55 +196,44 @@ export default function MerchantPage() {
     
     setIsIssuingToken(true);
     try {
-      // 1. Issue MPT Transaction
-      console.log('[Merchant] 1. Creating MPT Issuance Transaction...');
-      const issuanceTx = constructMPTIssuanceTx(
-        address,
-        { 
-          ticker: 'SZP-FUND',
-          name: 'SuzuPay Fund Token',
-          description: `Financing Campaign for ${financingGoal} XRP`
-        },
-        "1000000", // Fix supply: 1M tokens
-        0 // No decimals
-      );
+      console.log('[Merchant] 1. Configuring Account (DefaultRipple)...');
       
-      const issuanceResult = await signAndSubmit(issuanceTx);
-      console.log('[Merchant] Issuance Submitted:', issuanceResult);
-      
-      // 2. Poll for MPT ID (wait for ledger confirmation)
-      console.log('[Merchant] 2. Waiting for validation to get MPT ID...');
-      let newMptData: MPTIssuanceData | undefined;
-      
-      // Poll a few times
-      for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 2000)); // Wait 2s
-        const issuances = await getAccountMPTIssuances(address);
-        if (issuances.length > 0) {
-           newMptData = issuances[0]; 
-           break;
-        }
+      // Step 1: Enable DefaultRipple if needed
+      const rippleTx = await ensureDefaultRipple(address);
+      if (rippleTx) {
+        await signAndSubmit(rippleTx);
+        console.log('[Merchant] Account Configured (DefaultRipple Enabled)');
+      } else {
+        console.log('[Merchant] Account already has DefaultRipple enabled');
       }
 
-      if (!newMptData) {
-        throw new Error('Timed out waiting for MPT Issuance confirmation');
-      }
+      console.log('[Merchant] 2. Creating Sell Offer (Initial Liquidity)...');
       
-      console.log('[Merchant] Found MPT ID:', newMptData.mpt_issuance_id);
+      // Define Token
+      const token: TokenInfo = {
+        currency: 'SZP', // Standard 3-char code
+        issuer: address,
+        value: '0' // Not used in offer construction directly
+      };
 
-      // 3. Create Sell Offer (Sell 100% of tokens for Goal Amount)
-      console.log('[Merchant] 3. Creating Sell Offer...');
-      const sellOfferTx = constructMPTSellOfferTx(
+      // Step 2: Create Sell Offer
+      // Selling 1,000,000 SZP for the requested financing amount in XRP
+      const sellOfferTx = constructSellOfferTx(
         address,
-        newMptData.mpt_issuance_id,
-        "1000000", // Sell 1M Tokens
-        (parseFloat(financingGoal) * 1_000_000).toString() // Total Price in Drops
+        token,
+        "1000000", 
+        financingGoal // Amount of XRP we want
       );
       
       await signAndSubmit(sellOfferTx);
       console.log('[Merchant] Sell Offer Created Successfully');
       
-      setMptData(newMptData);
+      // Update local state
+      setTokenData({
+        ...token,
+        value: "1000000"
+      });
+      
       alert('Successfully launched financing campaign!');
 
     } catch (error) {
@@ -255,130 +247,103 @@ export default function MerchantPage() {
   return (
     <div className="min-h-screen bg-bg-900">
       {/* Header */}
-      <header className="border-b border-surface-700 bg-surface-800/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 rounded-lg hover:bg-surface-700 transition-colors">
-              <ArrowLeft className="w-5 h-5 text-text-med" />
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center">
-                <span className="text-white font-bold text-lg">S</span>
-              </div>
-              <span className="text-xl font-bold text-text-high">Merchant Portal</span>
-            </div>
-          </div>
-          <WalletConnectButton />
-        </div>
-      </header>
+      <PageHeader title="Merchant Portal" icon />
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         {!isConnected ? (
           /* Not Connected State */
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-full bg-surface-800 flex items-center justify-center mx-auto mb-6">
+          <div className="text-center py-16 animate-fade-in">
+            <div className="w-20 h-20 rounded-full bg-surface-800 border border-surface-700 flex items-center justify-center mx-auto mb-6">
               <Wallet className="w-10 h-10 text-text-low" />
             </div>
             <h2 className="text-2xl font-bold text-text-high mb-4">Connect Your Wallet</h2>
-            <p className="text-text-med mb-8">
+            <p className="text-text-med mb-8 max-w-md mx-auto">
               Connect your XRPL wallet to start receiving payments and raise capital
             </p>
             <WalletConnectButton />
           </div>
         ) : (
           /* Connected State */
-          <div className="space-y-8">
+          <div className="space-y-6">
             {/* Wallet Info Card */}
-            <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-text-high">Your Wallet</h3>
-                <span className="px-3 py-1 rounded-full bg-success/20 text-success text-sm font-medium">
-                  Connected
-                </span>
-              </div>
-              
-              <div className="space-y-4">
+            <Card className="bg-surface-800 border-surface-700">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg">Your Wallet</CardTitle>
+                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/15 text-success border-0 font-medium">
+                    Connected
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
                 <div className="flex items-center justify-between p-4 bg-surface-700/50 rounded-xl">
                   <div>
                     <p className="text-xs text-text-low mb-1">Address</p>
-                    <p className="font-mono text-text-high">{truncateAddress(address!)}</p>
+                    <p className="font-mono text-text-high text-sm">{truncateAddress(address!)}</p>
                   </div>
-                  <button 
-                    onClick={handleCopyAddress}
-                    className="p-2 rounded-lg hover:bg-surface-700 transition-colors"
-                  >
+                  <Button variant="ghost" size="icon" onClick={handleCopyAddress}>
                     {copied ? (
-                      <Check className="w-5 h-5 text-success" />
+                      <Check className="w-4 h-4 text-success" />
                     ) : (
-                      <Copy className="w-5 h-5 text-text-med" />
+                      <Copy className="w-4 h-4 text-text-med" />
                     )}
-                  </button>
+                  </Button>
                 </div>
                 
                 <div className="p-4 bg-surface-700/50 rounded-xl">
                   <p className="text-xs text-text-low mb-1">Balance</p>
                   <p className="text-2xl font-bold text-text-high">
-                    {balance ? formatXRP(balance) : '0'} <span className="text-lg text-text-med">XRP</span>
+                    {balance ? formatXRP(balance) : '0'} <span className="text-lg text-text-med font-normal">XRP</span>
                   </p>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
             {/* Tabs */}
-            <div className="flex gap-2 p-1 bg-surface-800 rounded-xl border border-surface-700">
-              <button
-                onClick={() => setActiveTab('payments')}
-                className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all ${
-                  activeTab === 'payments' 
-                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20' 
-                    : 'text-text-med hover:bg-surface-700'
-                }`}
-              >
-                QR Payments
-              </button>
-              <button
-                onClick={() => setActiveTab('financing')}
-                className={`flex-1 py-3 rounded-lg font-medium text-sm transition-all ${
-                  activeTab === 'financing' 
-                    ? 'bg-primary-500 text-white shadow-lg shadow-primary-500/20' 
-                    : 'text-text-med hover:bg-surface-700'
-                }`}
-              >
-                Micro-Financing
-              </button>
-            </div>
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'payments' | 'financing')}>
+              <TabsList className="w-full bg-surface-800 border border-surface-700 h-auto p-1">
+                <TabsTrigger 
+                  value="payments" 
+                  className="flex-1 py-3 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg"
+                >
+                  QR Payments
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="financing" 
+                  className="flex-1 py-3 data-[state=active]:bg-primary-500 data-[state=active]:text-white data-[state=active]:shadow-lg rounded-lg"
+                >
+                  Micro-Financing
+                </TabsTrigger>
+              </TabsList>
 
-            {/* Content Switcher */}
-            {activeTab === 'payments' ? (
-              /* PAYMENTS TAB */
-              <>
-                {/* Payment Status States */}
+              {/* PAYMENTS TAB */}
+              <TabsContent value="payments" className="mt-6">
                 {paymentStatus === 'idle' && (
-                  /* QR Generator Form */
-                  <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
-                        <QrCode className="w-5 h-5 text-primary-500" />
+                  <Card className="bg-surface-800 border-surface-700">
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center">
+                          <QrCode className="w-5 h-5 text-primary-500" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">Generate Payment QR</CardTitle>
+                          <CardDescription className="text-text-med">Create a QR code for customers to scan</CardDescription>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-text-high">Generate Payment QR</h3>
-                        <p className="text-sm text-text-med">Create a QR code for customers to scan</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-text-med mb-2">
                           Amount (XRP)
                         </label>
-                        <input
+                        <Input
                           type="number"
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                           placeholder="0.00"
                           min="0"
                           step="0.000001"
-                          className="w-full px-4 py-3 bg-surface-700 border border-surface-700 rounded-xl text-text-high placeholder-text-low focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all"
+                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
                         />
                       </div>
 
@@ -386,209 +351,213 @@ export default function MerchantPage() {
                         <label className="block text-sm font-medium text-text-med mb-2">
                           Description (Optional)
                         </label>
-                        <input
+                        <Input
                           type="text"
                           value={description}
                           onChange={(e) => setDescription(e.target.value)}
                           placeholder="e.g., Coffee order #123"
-                          className="w-full px-4 py-3 bg-surface-700 border border-surface-700 rounded-xl text-text-high placeholder-text-low focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 transition-all"
+                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
                         />
                       </div>
 
-                      <button
+                      <Button
                         onClick={handleGenerateQR}
                         disabled={!amount || parseFloat(amount) <= 0}
-                        className="w-full py-4 rounded-xl font-semibold text-white bg-primary-500 hover:bg-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                        className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-[rgba(255,79,112,0.2)]"
                       >
                         Generate QR Code
-                      </button>
-                    </div>
-                  </div>
+                      </Button>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {paymentStatus === 'waiting' && pendingPayment && (
-                  /* Waiting for Payment */
-                  <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-                    <div className="text-center mb-6">
-                      <div className="flex items-center justify-center gap-2 mb-2">
-                        <Clock className="w-5 h-5 text-primary-500 animate-pulse" />
-                        <span className="text-sm text-text-med">Waiting for payment...</span>
+                  <Card className="bg-surface-800 border-surface-700">
+                    <CardContent className="p-6">
+                      <div className="text-center mb-6">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <Clock className="w-5 h-5 text-primary-500 animate-pulse" />
+                          <span className="text-sm text-text-med">Waiting for payment...</span>
+                        </div>
+                        <h3 className="text-3xl font-bold text-primary-500 mb-1">{pendingPayment.amount} XRP</h3>
+                        {pendingPayment.description && (
+                          <p className="text-sm text-text-med">&quot;{pendingPayment.description}&quot;</p>
+                        )}
                       </div>
-                      <h3 className="text-3xl font-bold text-primary-500 mb-1">{pendingPayment.amount} XRP</h3>
-                      {pendingPayment.description && (
-                        <p className="text-sm text-text-med">&quot;{pendingPayment.description}&quot;</p>
+
+                      {/* QR Type Toggle */}
+                      <div className="flex justify-center gap-2 mb-4">
+                        <Button
+                          variant={qrType === 'xaman' ? 'default' : 'secondary'}
+                          size="sm"
+                          onClick={() => setQrType('xaman')}
+                          className={qrType === 'xaman' ? 'bg-primary-500 text-white' : 'bg-surface-700 text-text-med'}
+                        >
+                          Xaman
+                        </Button>
+                        <Button
+                          variant={qrType === 'generic' ? 'default' : 'secondary'}
+                          size="sm"
+                          onClick={() => setQrType('generic')}
+                          className={qrType === 'generic' ? 'bg-primary-500 text-white' : 'bg-surface-700 text-text-med'}
+                        >
+                          Crossmark / Other
+                        </Button>
+                      </div>
+
+                      <div className="flex justify-center mb-4">
+                        <div className="inline-block">
+                          <QRGenerator 
+                            destination={address!}
+                            amount={pendingPayment.amount}
+                            currency="XRP"
+                            type={qrType}
+                            size={220}
+                          />
+                        </div>
+                      </div>
+
+                      <p className="text-center text-sm text-text-low mb-4">
+                        {qrType === 'xaman' 
+                          ? 'Scan with Xaman (Xumm) wallet' 
+                          : 'Scan with any XRPL wallet'
+                        }
+                      </p>
+
+                      {/* Timer */}
+                      <div className="flex justify-center items-center gap-2 mb-6">
+                        <Clock className="w-4 h-4 text-text-low" />
+                        <span className="text-sm text-text-med">Expires in: </span>
+                        <span className="font-mono text-text-high">{getTimeRemaining()}</span>
+                      </div>
+
+                      <Separator className="mb-6 bg-surface-700" />
+
+                      {/* Actions */}
+                      <div className="flex gap-3">
+                        <Button
+                          variant="outline"
+                          onClick={handleCopyQR}
+                          className="flex-1 border-surface-700 text-text-med hover:bg-surface-700 gap-2"
+                        >
+                          <Copy className="w-4 h-4" />
+                          Copy Data
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleReset}
+                          className="flex-1 border-surface-700 text-text-med hover:bg-surface-700 gap-2"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                          Cancel
+                        </Button>
+                      </div>
+
+                      {qrType === 'xaman' && (
+                        <Button
+                          variant="secondary"
+                          asChild
+                          className="w-full mt-4 bg-surface-700 text-text-med hover:bg-surface-700/80 gap-2"
+                        >
+                          <a href={pendingPayment.xamanUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="w-4 h-4" />
+                            Open in Xaman
+                          </a>
+                        </Button>
                       )}
-                    </div>
-
-                    {/* QR Type Toggle */}
-                    <div className="flex justify-center gap-2 mb-4">
-                      <button
-                        onClick={() => setQrType('xaman')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                          qrType === 'xaman'
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-surface-700 text-text-med hover:bg-surface-600'
-                        }`}
-                      >
-                        Xaman
-                      </button>
-                      <button
-                        onClick={() => setQrType('generic')}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                          qrType === 'generic'
-                            ? 'bg-primary-500 text-white'
-                            : 'bg-surface-700 text-text-med hover:bg-surface-600'
-                        }`}
-                      >
-                        Crossmark / Other
-                      </button>
-                    </div>
-
-                    <div className="flex justify-center mb-4">
-                      <div className="inline-block">
-                        <QRGenerator 
-                          destination={address!}
-                          amount={pendingPayment.amount}
-                          currency="XRP"
-                          type={qrType}
-                          size={220}
-                        />
-                      </div>
-                    </div>
-
-                    <p className="text-center text-sm text-text-low mb-4">
-                      {qrType === 'xaman' 
-                        ? 'Scan with Xaman (Xumm) wallet' 
-                        : 'Scan with any XRPL wallet'
-                      }
-                    </p>
-
-                    {/* Timer */}
-                    <div className="flex justify-center items-center gap-2 mb-6">
-                      <Clock className="w-4 h-4 text-text-low" />
-                      <span className="text-sm text-text-med">Expires in: </span>
-                      <span className="font-mono text-text-high">{getTimeRemaining()}</span>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-3">
-                      <button
-                        onClick={handleCopyQR}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-surface-700 text-text-med hover:bg-surface-700 transition-colors"
-                      >
-                        <Copy className="w-4 h-4" />
-                        Copy Data
-                      </button>
-                      <button
-                        onClick={handleReset}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl border border-surface-700 text-text-med hover:bg-surface-700 transition-colors"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                        Cancel
-                      </button>
-                    </div>
-
-                    {qrType === 'xaman' && (
-                      <a
-                        href={pendingPayment.xamanUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-4 flex items-center justify-center gap-2 py-3 rounded-xl bg-surface-700 text-text-med hover:bg-surface-600 transition-colors"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                        Open in Xaman
-                      </a>
-                    )}
-                  </div>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {paymentStatus === 'received' && (
-                  /* Payment Received */
-                  <div className="p-6 bg-surface-800 rounded-2xl border border-success/50 text-center">
-                    <div className="w-16 h-16 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle2 className="w-8 h-8 text-success" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-success mb-2">Payment Received!</h3>
-                    <p className="text-3xl font-bold text-text-high mb-4">
-                      {receivedAmount} XRP
-                    </p>
-                    
-                    {receivedTxHash && (
-                      <a
-                        href={`https://testnet.xrpl.org/transactions/${receivedTxHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 text-sm text-primary-500 hover:underline mb-6"
-                      >
-                        View Transaction
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
+                  <Card className="bg-surface-800 border-[rgb(var(--color-success))]/50 animate-scale-in">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-16 h-16 rounded-full bg-[rgb(var(--color-success))]/15 flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle2 className="w-8 h-8 text-success" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-success mb-2">Payment Received!</h3>
+                      <p className="text-3xl font-bold text-text-high mb-4">
+                        {receivedAmount} XRP
+                      </p>
+                      
+                      {receivedTxHash && (
+                        <a
+                          href={`https://testnet.xrpl.org/transactions/${receivedTxHash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm text-primary-500 hover:underline mb-6"
+                        >
+                          View Transaction
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      )}
 
-                    <button
-                      onClick={handleReset}
-                      className="w-full py-4 rounded-xl font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-all"
-                    >
-                      New Payment
-                    </button>
-                  </div>
+                      <Button
+                        onClick={handleReset}
+                        className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white"
+                      >
+                        New Payment
+                      </Button>
+                    </CardContent>
+                  </Card>
                 )}
 
                 {paymentStatus === 'expired' && (
-                  /* Payment Expired */
-                  <div className="p-6 bg-surface-800 rounded-2xl border border-warning/50 text-center">
-                    <div className="w-16 h-16 rounded-full bg-warning/20 flex items-center justify-center mx-auto mb-4">
-                      <Clock className="w-8 h-8 text-warning" />
-                    </div>
-                    <h3 className="text-2xl font-bold text-warning mb-2">Payment Expired</h3>
-                    <p className="text-text-med mb-6">
-                      The payment request has expired. Please generate a new QR code.
-                    </p>
+                  <Card className="bg-surface-800 border-[rgb(var(--color-warning))]/50">
+                    <CardContent className="p-6 text-center">
+                      <div className="w-16 h-16 rounded-full bg-[rgb(var(--color-warning))]/15 flex items-center justify-center mx-auto mb-4">
+                        <Clock className="w-8 h-8 text-warning" />
+                      </div>
+                      <h3 className="text-2xl font-bold text-warning mb-2">Payment Expired</h3>
+                      <p className="text-text-med mb-6">
+                        The payment request has expired. Please generate a new QR code.
+                      </p>
 
-                    <button
-                      onClick={handleReset}
-                      className="w-full py-4 rounded-xl font-semibold text-white bg-primary-500 hover:bg-primary-600 transition-all"
-                    >
-                      Generate New QR
-                    </button>
-                  </div>
+                      <Button
+                        onClick={handleReset}
+                        className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white"
+                      >
+                        Generate New QR
+                      </Button>
+                    </CardContent>
+                  </Card>
                 )}
-              </>
-            ) : (
-              /* FINANCING TAB */
-              <div className="space-y-6">
-                {!mptData ? (
-                  /* Start Campaign Form */
-                  <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-lg bg-accent-500/20 flex items-center justify-center">
-                        <Rocket className="w-5 h-5 text-accent-500" />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-semibold text-text-high">Start Financing Campaign</h3>
-                        <p className="text-sm text-text-med">Raise capital using XRPL MPTs</p>
-                      </div>
-                    </div>
+              </TabsContent>
 
-                    <div className="space-y-4">
+              {/* FINANCING TAB */}
+              <TabsContent value="financing" className="mt-6 space-y-6">
+                {!tokenData ? (
+                  <Card className="bg-surface-800 border-surface-700">
+                    <CardHeader>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-accent-500/15 flex items-center justify-center">
+                          <Rocket className="w-5 h-5 text-accent-500" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">Start Financing Campaign</CardTitle>
+                          <CardDescription className="text-text-med">Raise capital using XRPL MPTs</CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-text-med mb-2">
                           Funding Goal (XRP)
                         </label>
-                        <input
+                        <Input
                           type="number"
                           value={financingGoal}
                           onChange={(e) => setFinancingGoal(e.target.value)}
                           placeholder="e.g. 1000"
                           min="1"
-                          className="w-full px-4 py-3 bg-surface-700 border border-surface-700 rounded-xl text-text-high placeholder-text-low focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-500/20 transition-all"
+                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-accent-500 focus-visible:ring-accent-500/20 h-12 rounded-xl"
                         />
                       </div>
                       
-                      <button
+                      <Button
                         onClick={handleStartFinancing}
                         disabled={isIssuingToken || !financingGoal}
-                        className="w-full py-4 rounded-xl font-semibold text-white bg-accent-500 hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                        className="w-full h-12 rounded-xl font-semibold bg-accent-500 hover:bg-accent-500/90 text-black gap-2"
                       >
                         {isIssuingToken ? (
                           <>
@@ -601,75 +570,89 @@ export default function MerchantPage() {
                             Launch Campaign
                           </>
                         )}
-                      </button>
-                    </div>
-                  </div>
+                      </Button>
+                    </CardContent>
+                  </Card>
                 ) : (
                   /* Active Campaign Dashboard */
                   <div className="space-y-6">
-                    <div className="p-6 bg-surface-800 rounded-2xl border border-accent-500/30">
-                      <div className="flex items-center justify-between mb-6">
-                         <div>
-                           <h3 className="text-xl font-bold text-text-high">Active Campaign</h3>
-                           <p className="text-sm text-accent-500 font-mono mt-1">
-                             ID: {mptData.mpt_issuance_id.substring(0, 16)}...
-                           </p>
-                         </div>
-                         <div className="px-3 py-1 rounded-full bg-accent-500/20 text-accent-500 text-sm font-medium flex items-center gap-2">
-                           <Activity className="w-4 h-4" />
-                           Live
-                         </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-surface-700/50 rounded-xl">
-                          <p className="text-xs text-text-low mb-1">Total Supply</p>
-                          <p className="text-lg font-bold text-text-high">
-                            1,000,000 <span className="text-sm font-normal text-text-med">SZP-FUND</span>
-                          </p>
+                    <Card className="bg-surface-800 border-surface-700">
+                  <CardHeader>
+                    <CardTitle className="text-text-high flex items-center justify-between">
+                      Financing Campaign
+                      <Badge variant="outline" className="text-secondary-400 border-secondary-400">
+                        Active
+                      </Badge>
+                    </CardTitle>
+                    <CardDescription className="text-text-med">
+                      Your fund token is live on the XRPL DEX
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {tokenData ? (
+                      <div className="p-4 bg-surface-900 rounded-lg space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-text-med">Token Ticker:</span>
+                          <span className="text-text-high font-mono">{(tokenData as any)?.currency}</span>
                         </div>
-                        <div className="p-4 bg-surface-700/50 rounded-xl">
-                          <p className="text-xs text-text-low mb-1">Outstanding</p>
-                          <p className="text-lg font-bold text-text-high">
-                            {formatXRP(mptData.outstanding_amount)} <span className="text-sm font-normal text-text-med">Sold</span>
-                          </p>
+                        <div className="flex justify-between">
+                          <span className="text-text-med">Issuer Address:</span>
+                          <span className="text-text-high font-mono text-sm">
+                            {truncateAddress((tokenData as any)?.issuer || '')}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-t border-surface-700 pt-2 mt-2">
+                          <span className="text-text-med">Liquidity Offered:</span>
+                          <span className="text-secondary-400 font-bold">1,000,000 SZP</span>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="p-4 bg-surface-900 rounded-lg flex justify-center text-text-med">
+                        Loading token details...
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
 
-                    <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-                      <h4 className="font-semibold text-text-high mb-4">Investor Benefits</h4>
-                      <ul className="space-y-3">
-                        <li className="flex items-start gap-3 text-sm text-text-med">
-                          <Check className="w-5 h-5 text-success shrink-0" />
-                          <span>Investors hold <b>SZP-FUND</b> tokens representing their stake.</span>
-                        </li>
-                        <li className="flex items-start gap-3 text-sm text-text-med">
-                          <Check className="w-5 h-5 text-success shrink-0" />
-                          <span>Tokens can be traded freely on the XRPL DEX.</span>
-                        </li>
-                        <li className="flex items-start gap-3 text-sm text-text-med">
-                          <Check className="w-5 h-5 text-success shrink-0" />
-                          <span>Future revenue share will be distributed to token holders.</span>
-                        </li>
-                      </ul>
-                    </div>
+                    <Card className="bg-surface-800 border-surface-700">
+                      <CardHeader>
+                        <CardTitle className="text-base">Investor Benefits</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-3">
+                          <li className="flex items-start gap-3 text-sm text-text-med">
+                            <Check className="w-5 h-5 text-success shrink-0" />
+                            <span>Investors hold <b className="text-text-high">SZP-FUND</b> tokens representing their stake.</span>
+                          </li>
+                          <li className="flex items-start gap-3 text-sm text-text-med">
+                            <Check className="w-5 h-5 text-success shrink-0" />
+                            <span>Tokens can be traded freely on the XRPL DEX.</span>
+                          </li>
+                          <li className="flex items-start gap-3 text-sm text-text-med">
+                            <Check className="w-5 h-5 text-success shrink-0" />
+                            <span>Future revenue share will be distributed to token holders.</span>
+                          </li>
+                        </ul>
+                      </CardContent>
+                    </Card>
                   </div>
                 )}
 
-                <div className="p-4 rounded-xl bg-primary-500/10 border border-primary-500/20">
-                  <div className="flex gap-3">
-                    <TrendingUp className="w-5 h-5 text-primary-500 shrink-0" />
-                    <div>
-                      <h4 className="font-medium text-primary-500 mb-1">Grow your business</h4>
-                      <p className="text-xs text-text-med leading-relaxed">
-                        Campaigns run for 30 days. Funds are released automatically as you hit milestones.
-                      </p>
+                <Card className="bg-primary-500/10 border-primary-500/20">
+                  <CardContent className="p-4">
+                    <div className="flex gap-3">
+                      <TrendingUp className="w-5 h-5 text-primary-500 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-semibold text-primary-500 mb-1">Grow your business</h4>
+                        <p className="text-xs text-text-med leading-relaxed">
+                          Campaigns run for 30 days. Funds are released automatically as you hit milestones.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </div>
-            )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         )}
       </main>

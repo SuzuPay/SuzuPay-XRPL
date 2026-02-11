@@ -1,17 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { ArrowLeft, Search, TrendingUp, Shield, Clock, Coins, Lock, ArrowUpRight, Check, AlertCircle, Wallet, Activity, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
+import { Search, TrendingUp, Shield, Coins, ArrowUpRight, AlertCircle, Activity, RefreshCw } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
-import { WalletConnectButton } from '@/components/wallet-connect-button';
-import { formatXRP, truncateAddress } from '@/lib/utils';
+import { PageHeader } from '@/components/page-header';
+import { formatXRP } from '@/lib/utils';
 import { 
-  getAccountMPTIssuances, 
-  getMPTSellOffers, 
-  constructMPTBuyOfferTx,
-  MPTIssuanceData
-} from '@/lib/mpt-utils';
+  getTokenSellOffers, 
+  constructTrustSetTx, 
+  constructBuyOfferTx, 
+  hasTrustLine 
+} from '@/lib/token-utils';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { dropsToXrp } from 'xrpl';
 
 export default function InvestPage() {
   const { isConnected, address, balance, signAndSubmit } = useWallet();
@@ -21,52 +25,56 @@ export default function InvestPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   
-  // Campaign Data
-  const [campaign, setCampaign] = useState<MPTIssuanceData | null>(null);
-  const [tokenPrice, setTokenPrice] = useState<number | null>(null); // XRP per Token
+  // Campaign Data (Standard Token)
+  const [activeToken, setActiveToken] = useState<{ currency: string; issuer: string; value: string } | null>(null);
+  const [tokenPrice, setTokenPrice] = useState<number | null>(null);
+  const [availableAmount, setAvailableAmount] = useState<string>('0');
   
   // Investment State
-  const [investAmount, setInvestAmount] = useState(''); // XRP Amount
+  const [investAmount, setInvestAmount] = useState('');
   const [isInvesting, setIsInvesting] = useState(false);
 
+  // Search for Merchant's active Sell Offers (Financing Campaigns)
   const handleSearch = async () => {
     if (!merchantAddress) return;
     
     setIsSearching(true);
     setSearchError(null);
-    setCampaign(null);
+    setActiveToken(null);
     setTokenPrice(null);
+    setAvailableAmount('0');
 
     try {
-      // 1. Get Issuances
-      const issuances = await getAccountMPTIssuances(merchantAddress);
-      if (issuances.length === 0) {
-        setSearchError('No active financing campaigns found for this merchant.');
+      // Find valid Sell Offers for 'SZP' issued by this merchant
+      const offers = await getTokenSellOffers(merchantAddress, 'SZP');
+      
+      if (offers.length === 0) {
+        setSearchError('No active financing campaigns (SZP Sell Offers) found for this merchant.');
         return;
       }
 
-      const activeCampaign = issuances[0]; // Assume first one for MVP
-      setCampaign(activeCampaign);
-
-      // 2. Get Sell Offers to determine price
-      const offers = await getMPTSellOffers(merchantAddress, activeCampaign.mpt_issuance_id);
+      // Pick the best offer (cheapest) or just the first one for this MVP
+      const bestOffer = offers[0];
       
-      if (offers.length > 0) {
-        // Calculate Price: Total XRP / Total Tokens
-        // Note: This is a simplified "spot price" calculation based on the first offer
-        const offer = offers[0];
-        // account_offers returns snake_case fields (taker_gets, taker_pays)
-        // MPT values are decimal strings (not hex) per XRPL encoding standards
-        const mptAmount = parseInt(offer.taker_gets.value, 10);
-        const xrpAmountDrops = parseInt(offer.taker_pays);
-        
-        if (mptAmount > 0) {
-           const pricePerTokenDrops = xrpAmountDrops / mptAmount;
-           const pricePerTokenXRP = pricePerTokenDrops / 1_000_000;
-           setTokenPrice(pricePerTokenXRP);
-        }
+      // Calculate Price (XRP per Token)
+      // TakerGets = Token (since merchant is selling Token)
+      // TakerPays = XRP
+      const tokenAmount = parseFloat(bestOffer.TakerGets.value);
+      const xrpAmountDrops = parseInt(bestOffer.TakerPays);
+      
+      if (tokenAmount > 0) {
+         const pricePerTokenDrops = xrpAmountDrops / tokenAmount;
+         const pricePerTokenXRP = pricePerTokenDrops / 1_000_000;
+         
+         setTokenPrice(pricePerTokenXRP);
+         setActiveToken({
+           currency: 'SZP',
+           issuer: merchantAddress,
+           value: bestOffer.TakerGets.value
+         });
+         setAvailableAmount(bestOffer.TakerGets.value);
       } else {
-        setSearchError('Campaign found, but no active sell offers available.');
+         setSearchError('Invalid offer data found.');
       }
 
     } catch (error) {
@@ -78,7 +86,7 @@ export default function InvestPage() {
   };
 
   const handleInvest = async () => {
-    if (!campaign || !investAmount || !address || !tokenPrice) return;
+    if (!activeToken || !investAmount || !address || !tokenPrice) return;
 
     setIsInvesting(true);
     try {
@@ -90,19 +98,42 @@ export default function InvestPage() {
         return;
       }
 
-      const tx = constructMPTBuyOfferTx(
+      // Step 1: Check / Create Trust Line
+      // Investors must trust the merchant's token before they can hold it
+      const hasTrust = await hasTrustLine(address, activeToken);
+
+      if (!hasTrust) {
+        console.log('Creating TrustLine...');
+        const trustTx = constructTrustSetTx(address, activeToken);
+        const trustResult = await signAndSubmit(trustTx);
+        
+        if (!trustResult) {
+          throw new Error('TrustSet transaction failed or was rejected');
+        }
+        console.log('TrustSet success:', trustResult);
+        
+        // Small delay to allow ledger to process
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+
+      // Step 2: Create Buy Offer (Buy Token with XRP)
+      // Note: constructBuyOfferTx handles xrpToDrops conversion internally
+      const buyTx = constructBuyOfferTx(
         address,
-        campaign.mpt_issuance_id,
+        activeToken,
         tokenAmount.toString(),
-        (xrpAmount * 1_000_000).toString() // Drops
+        investAmount // Pass XRP string directly
       );
 
-      console.log('Submitting Buy Offer:', tx);
-      const result = await signAndSubmit(tx);
+      console.log('Submitting Buy Offer:', buyTx);
+      const result = await signAndSubmit(buyTx);
       console.log('Buy Offer Result:', result);
       
-      alert(`Successfully invested ${xrpAmount} XRP! You will receive approx ${tokenAmount} ${campaign.metadataRec?.ticker || 'Tokens'}`);
+      alert(`Successfully invested ${xrpAmount} XRP! You bought approx ${tokenAmount} SZP tokens.`);
       setInvestAmount('');
+      
+      // Refresh search to show updated availability
+      handleSearch();
       
     } catch (error) {
       console.error('Investment failed:', error);
@@ -121,22 +152,11 @@ export default function InvestPage() {
   return (
     <div className="min-h-screen bg-bg-900">
       {/* Header */}
-      <header className="border-b border-surface-700 bg-surface-800/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 rounded-lg hover:bg-surface-700 transition-colors">
-              <ArrowLeft className="w-5 h-5 text-text-med" />
-            </Link>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-success flex items-center justify-center">
-                <TrendingUp className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-xl font-bold text-text-high">Invest</span>
-            </div>
-          </div>
-          <WalletConnectButton />
-        </div>
-      </header>
+      <PageHeader
+        title="Invest"
+        icon={<TrendingUp className="w-4 h-4 text-white" />}
+        iconBg="bg-[rgb(var(--color-success))]"
+      />
 
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         {/* Search Section */}
@@ -145,140 +165,150 @@ export default function InvestPage() {
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-low" />
-              <input
+              <Input
                 type="text"
                 value={merchantAddress}
                 onChange={(e) => setMerchantAddress(e.target.value)}
                 placeholder="Enter Merchant XRPL Address"
-                className="w-full pl-12 pr-4 py-3 bg-surface-800 border border-surface-700 rounded-xl text-text-high placeholder-text-low focus:border-success focus:outline-none focus:ring-2 focus:ring-success/20 transition-all"
+                className="pl-12 bg-surface-800 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-success))] focus-visible:ring-[rgb(var(--color-success))]/20 h-12 rounded-xl"
               />
             </div>
-            <button
+            <Button
               onClick={handleSearch}
               disabled={isSearching || !merchantAddress}
-              className="px-6 py-3 rounded-xl font-semibold text-white bg-success hover:bg-success-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="px-6 h-12 rounded-xl font-semibold bg-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/90 text-white"
             >
               {isSearching ? 'Searching...' : 'Search'}
-            </button>
+            </Button>
           </div>
           
           {searchError && (
-            <div className="p-4 rounded-xl bg-error/10 border border-error/20 flex items-center gap-3 text-error">
-              <AlertCircle className="w-5 h-5" />
-              <p className="text-sm">{searchError}</p>
-            </div>
+            <Card className="bg-[rgb(var(--color-error))]/10 border-[rgb(var(--color-error))]/20">
+              <CardContent className="p-4 flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-error" />
+                <p className="text-error text-sm">{searchError}</p>
+              </CardContent>
+            </Card>
           )}
         </div>
 
         {/* Campaign Details */}
-        {campaign && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="p-6 bg-surface-800 rounded-2xl border border-surface-700">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <h2 className="text-xl font-bold text-text-high mb-1">
-                    {campaign.metadataRec?.name || 'Financing Campaign'}
-                  </h2>
-                  <p className="text-text-med text-sm max-w-md">
-                    {campaign.metadataRec?.description || 'No description provided.'}
-                  </p>
+        {activeToken && (
+          <div className="space-y-6 animate-fade-in">
+            <Card className="bg-surface-800 border-surface-700">
+              <CardHeader>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-xl">
+                      Merchant Financing (Standard Token)
+                    </CardTitle>
+                    <CardDescription className="text-text-med mt-1 max-w-md">
+                      Buy SZP tokens to fund this merchant's inventory.
+                    </CardDescription>
+                  </div>
+                  <Badge variant="secondary" className="bg-[rgb(var(--color-success))]/15 text-success border-0 gap-1 font-medium">
+                    <Activity className="w-3 h-3" />
+                    Live
+                  </Badge>
                 </div>
-                <div className="px-3 py-1 rounded-full bg-success/20 text-success text-sm font-medium flex items-center gap-2">
-                  <Activity className="w-4 h-4" />
-                  Live
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="p-4 bg-surface-700/50 rounded-xl">
-                  <p className="text-xs text-text-low mb-1">Token</p>
-                  <p className="font-bold text-text-high">{campaign.metadataRec?.ticker || 'TKN'}</p>
-                </div>
-                <div className="p-4 bg-surface-700/50 rounded-xl">
-                  <p className="text-xs text-text-low mb-1">Price</p>
-                  <p className="font-bold text-text-high">
-                    {tokenPrice ? `${tokenPrice.toFixed(6)} XRP` : 'Calculating...'}
-                  </p>
-                </div>
-                <div className="p-4 bg-surface-700/50 rounded-xl">
-                  <p className="text-xs text-text-low mb-1">Available</p>
-                  <p className="font-bold text-text-high">
-                    {formatXRP(campaign.outstanding_amount)}
-                  </p>
-                </div>
-              </div>
-
-              {/* Investment Input */}
-              <div className="p-4 bg-surface-700/30 rounded-xl border border-surface-700">
-                <div className="flex justify-between items-center mb-4">
-                  <label className="text-sm font-medium text-text-med">Investment Amount (XRP)</label>
-                  <span className="text-xs text-text-low">
-                    Balance: {balance ? formatXRP(balance) : '0'} XRP
-                  </span>
-                </div>
-                
-                <div className="flex gap-4 mb-4">
-                  <input
-                    type="number"
-                    value={investAmount}
-                    onChange={(e) => setInvestAmount(e.target.value)}
-                    placeholder="0.00"
-                    disabled={!isConnected}
-                    className="flex-1 px-4 py-3 bg-surface-800 border border-surface-600 rounded-xl text-text-high focus:border-success focus:outline-none focus:ring-2 focus:ring-success/20 transition-all"
-                  />
-                  <button
-                    onClick={handleInvest}
-                    disabled={isInvesting || !investAmount || !isConnected || !tokenPrice}
-                    className="px-8 py-3 rounded-xl font-bold text-white bg-success hover:bg-success-hover disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center gap-2"
-                  >
-                    {isInvesting ? (
-                      <RefreshCw className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <>
-                        <Coins className="w-5 h-5" />
-                        Invest
-                      </>
-                    )}
-                  </button>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="p-4 bg-surface-700/50 rounded-xl">
+                    <p className="text-xs text-text-low mb-1">Token</p>
+                    <p className="font-bold text-text-high">{activeToken.currency}</p>
+                  </div>
+                  <div className="p-4 bg-surface-700/50 rounded-xl">
+                    <p className="text-xs text-text-low mb-1">Price</p>
+                    <p className="font-bold text-text-high">
+                      {tokenPrice ? `${tokenPrice.toFixed(6)} XRP` : 'Calculating...'}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-surface-700/50 rounded-xl">
+                    <p className="text-xs text-text-low mb-1">Available</p>
+                    <p className="font-bold text-text-high">
+                      {parseInt(availableAmount).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-text-med">You will receive approx:</span>
-                  <span className="font-bold text-success">
-                    {estimatedTokens(investAmount)} {campaign.metadataRec?.ticker || 'Tokens'}
-                  </span>
+                {/* Investment Input */}
+                <div className="p-4 bg-surface-700/30 rounded-xl border border-surface-700 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <label className="text-sm font-medium text-text-med">Investment Amount (XRP)</label>
+                    <span className="text-xs text-text-low">
+                      Balance: {balance ? formatXRP(balance) : '0'} XRP
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-4">
+                    <Input
+                      type="number"
+                      value={investAmount}
+                      onChange={(e) => setInvestAmount(e.target.value)}
+                      placeholder="0.00"
+                      disabled={!isConnected}
+                      className="flex-1 bg-surface-800 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-success))] focus-visible:ring-[rgb(var(--color-success))]/20 h-12 rounded-xl"
+                    />
+                    <Button
+                      onClick={handleInvest}
+                      disabled={isInvesting || !investAmount || !isConnected || !tokenPrice}
+                      className="px-8 h-12 rounded-xl font-bold bg-[rgb(var(--color-success))] hover:bg-[rgb(var(--color-success))]/90 text-white gap-2"
+                    >
+                      {isInvesting ? (
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Coins className="w-5 h-5" />
+                          Invest
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-text-med">You will receive approx:</span>
+                    <span className="font-bold text-success">
+                      {estimatedTokens(investAmount)} {activeToken.currency}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
             {/* Platform Benefits */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="p-5 bg-surface-800 rounded-xl border border-surface-700">
-                <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center mb-3">
-                  <Shield className="w-5 h-5 text-primary-500" />
-                </div>
-                <h3 className="font-semibold text-text-high mb-1">Secured by XRPL</h3>
-                <p className="text-xs text-text-med">
-                  Funds are held in escrow and released based on verified merchant milestones.
-                </p>
-              </div>
-              <div className="p-5 bg-surface-800 rounded-xl border border-surface-700">
-                <div className="w-10 h-10 rounded-lg bg-accent-500/20 flex items-center justify-center mb-3">
-                  <ArrowUpRight className="w-5 h-5 text-accent-500" />
-                </div>
-                <h3 className="font-semibold text-text-high mb-1">Automated Returns</h3>
-                <p className="text-xs text-text-med">
-                  Revenue share is automatically distributed to token holders via payment channels.
-                </p>
-              </div>
+              <Card className="bg-surface-800 border-surface-700">
+                <CardContent className="p-5">
+                  <div className="w-10 h-10 rounded-xl bg-primary-500/15 flex items-center justify-center mb-3">
+                    <Shield className="w-5 h-5 text-primary-500" />
+                  </div>
+                  <h3 className="font-semibold text-text-high mb-1">Secured by XRPL</h3>
+                  <p className="text-xs text-text-med leading-relaxed">
+                    Funds are held in escrow and released based on verified merchant milestones.
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="bg-surface-800 border-surface-700">
+                <CardContent className="p-5">
+                  <div className="w-10 h-10 rounded-xl bg-accent-500/15 flex items-center justify-center mb-3">
+                    <ArrowUpRight className="w-5 h-5 text-accent-500" />
+                  </div>
+                  <h3 className="font-semibold text-text-high mb-1">Automated Returns</h3>
+                  <p className="text-xs text-text-med leading-relaxed">
+                    Revenue share is automatically distributed to token holders via payment channels.
+                  </p>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )}
 
-        {!campaign && !isSearching && (
+        {!activeToken && !isSearching && (
           /* Empty State / Intro */
-          <div className="mt-8 text-center py-12">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface-800 mb-4">
+          <div className="mt-8 text-center py-12 animate-fade-in">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-surface-800 border border-surface-700 mb-4">
               <Search className="w-8 h-8 text-text-low" />
             </div>
             <h3 className="text-lg font-medium text-text-high mb-2">Search for a Merchant</h3>
