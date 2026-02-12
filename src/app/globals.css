@@ -1,80 +1,72 @@
 @import "tailwindcss";
+@plugin "tailwindcss-animate";
 
-/* SuzuPay Color Scheme - Matching Original */
+/* ═══════════════════════════════════════════════════════
+   SuzuPay XRPL — Design System
+   Exact match of original SuzuPay color scheme & tokens
+   ═══════════════════════════════════════════════════════ */
+
 :root {
-  /* Base colors */
-  --background: 0 0% 100%;
-  --foreground: 0 0% 3.9%;
-  --card: 0 0% 100%;
-  --card-foreground: 0 0% 3.9%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 0 0% 3.9%;
-  --primary: 0 0% 9%;
-  --primary-foreground: 0 0% 98%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 0 0% 9%;
-  --muted: 0 0% 96.1%;
-  --muted-foreground: 0 0% 45.1%;
-  --accent: 0 0% 96.1%;
-  --accent-foreground: 0 0% 9%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 0 0% 89.8%;
-  --input: 0 0% 89.8%;
-  --ring: 0 0% 3.9%;
+  /* SuzuPay Brand Colors (RGB triplets for alpha support) */
+  --color-primary-500: 255 79 112;   /* Coral Pink #FF4F70 */
+  --color-primary-600: 139 49 255;   /* Purple #8B31FF */
+  --color-accent-500: 255 199 89;    /* Gold #FFC759 */
+  --color-bg-900: 14 14 21;          /* Deep dark #0E0E15 */
+  --color-surface-800: 24 24 32;     /* Card surface #181820 */
+  --color-surface-700: 35 35 46;     /* Elevated surface #23232E */
+  --color-text-high: 255 255 255;    /* Primary text */
+  --color-text-med: 201 201 212;     /* Secondary text */
+  --color-text-low: 138 138 149;     /* Tertiary text */
+  --color-error: 255 107 107;        /* Error red */
+  --color-success: 34 197 94;        /* Success green */
+  --color-warning: 234 179 8;        /* Warning yellow */
+
+  /* Border radii */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
   --radius: 0.5rem;
-  
-  /* SuzuPay Custom Colors (RGB for alpha support) */
-  --color-primary-500: 99 102 241;  /* Indigo */
-  --color-primary-600: 79 70 229;
-  --color-accent-500: 236 72 153;   /* Pink */
-  --color-bg-900: 3 7 18;           /* Dark background */
-  --color-surface-800: 17 24 39;    /* Card surfaces */
-  --color-surface-700: 31 41 55;    /* Elevated surfaces */
-  --color-text-high: 249 250 251;   /* Primary text */
-  --color-text-med: 156 163 175;    /* Secondary text */
-  --color-text-low: 107 114 128;    /* Tertiary text */
-  --color-error: 239 68 68;         /* Error red */
-  --color-success: 34 197 94;       /* Success green */
-  --color-warning: 234 179 8;       /* Warning yellow */
+  --radius-lg: 16px;
+  --radius-xl: 32px;
 }
 
-/* Dark mode (default for SuzuPay) */
+/* Dark mode variables (always dark – SuzuPay is dark-first) */
 .dark, :root {
-  --background: 222 47% 4%;        /* bg-900 equivalent */
-  --foreground: 210 40% 98%;
-  --card: 222 47% 7%;              /* surface-800 */
-  --card-foreground: 210 40% 98%;
-  --popover: 222 47% 7%;
-  --popover-foreground: 210 40% 98%;
-  --primary: 239 84% 67%;          /* Indigo-500 */
+  --background: 240 20% 4%;         /* bg-900 equivalent */
+  --foreground: 0 0% 100%;
+  --card: 240 14% 11%;              /* surface-800 */
+  --card-foreground: 0 0% 100%;
+  --popover: 240 14% 11%;
+  --popover-foreground: 0 0% 100%;
+  --primary: 349 100% 65%;          /* Coral Pink #FF4F70 */
   --primary-foreground: 0 0% 100%;
-  --secondary: 222 47% 11%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 222 47% 11%;
-  --muted-foreground: 215 20% 65%;
-  --accent: 330 81% 60%;           /* Pink accent */
-  --accent-foreground: 0 0% 100%;
-  --destructive: 0 62.8% 50%;
-  --destructive-foreground: 0 0% 98%;
-  --border: 222 47% 14%;
-  --input: 222 47% 14%;
-  --ring: 239 84% 67%;
-  
+  --secondary: 240 14% 15%;         /* surface-700 ish */
+  --secondary-foreground: 0 0% 100%;
+  --muted: 240 14% 15%;
+  --muted-foreground: 240 8% 81%;   /* text-med */
+  --accent: 39 100% 67%;            /* Gold #FFC759 */
+  --accent-foreground: 0 0% 0%;
+  --destructive: 0 100% 71%;        /* error red */
+  --destructive-foreground: 0 0% 100%;
+  --border: 240 12% 18%;
+  --input: 240 12% 18%;
+  --ring: 349 100% 65%;             /* primary ring */
+
   /* Chart colors */
-  --chart-1: 220 70% 50%;
+  --chart-1: 349 100% 65%;
   --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  --chart-3: 39 100% 67%;
+  --chart-4: 271 81% 60%;
+  --chart-5: 0 100% 71%;
 }
 
-/* Tailwind v4 theme inline */
+/* Tailwind v4 theme inline — maps CSS vars → Tailwind tokens */
 @theme inline {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-secondary: hsl(var(--secondary));
@@ -88,83 +80,160 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
-  
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --font-sans: var(--font-urbanist), Inter, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
 }
 
-/* Base layer */
+@keyframes accordion-down {
+  from { height: 0; }
+  to { height: var(--radix-accordion-content-height); }
+}
+@keyframes accordion-up {
+  from { height: var(--radix-accordion-content-height); }
+  to { height: 0; }
+}
+
+/* ─── Base styles ─── */
 * {
   border-color: hsl(var(--border));
 }
 
 body {
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: rgb(var(--color-bg-900));
+  color: rgb(var(--color-text-high));
+  font-family: var(--font-sans);
+  overflow-x: hidden;
 }
 
-/* Utility classes for SuzuPay colors */
+html {
+  overflow-x: hidden;
+}
+
+/* Prevent mobile zoom on input focus */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* Crossmark wallet compatibility */
+html.crossmark-open,
+body.crossmark-open {
+  overflow: auto !important;
+  overscroll-behavior: auto;
+  touch-action: auto;
+}
+
+/* ─── Custom utility classes (SuzuPay palette) ─── */
 @layer utilities {
-  .bg-bg-900 {
-    background-color: rgb(var(--color-bg-900));
-  }
-  .bg-surface-800 {
-    background-color: rgb(var(--color-surface-800));
-  }
-  .bg-surface-700 {
-    background-color: rgb(var(--color-surface-700));
-  }
-  .text-text-high {
-    color: rgb(var(--color-text-high));
-  }
-  .text-text-med {
-    color: rgb(var(--color-text-med));
-  }
-  .text-text-low {
-    color: rgb(var(--color-text-low));
-  }
-  .text-primary-500 {
-    color: rgb(var(--color-primary-500));
-  }
-  .bg-primary-500 {
-    background-color: rgb(var(--color-primary-500));
-  }
-  .bg-primary-600 {
-    background-color: rgb(var(--color-primary-600));
-  }
-  .text-accent-500 {
-    color: rgb(var(--color-accent-500));
-  }
-  .bg-accent-500 {
-    background-color: rgb(var(--color-accent-500));
-  }
-  .text-error {
-    color: rgb(var(--color-error));
-  }
-  .text-success {
-    color: rgb(var(--color-success));
-  }
-  .text-warning {
-    color: rgb(var(--color-warning));
-  }
-  .border-surface-700 {
-    border-color: rgb(var(--color-surface-700));
+  /* Backgrounds */
+  .bg-bg-900 { background-color: rgb(var(--color-bg-900)); }
+  .bg-surface-800 { background-color: rgb(var(--color-surface-800)); }
+  .bg-surface-700 { background-color: rgb(var(--color-surface-700)); }
+  .bg-primary-500 { background-color: rgb(var(--color-primary-500)); }
+  .bg-primary-600 { background-color: rgb(var(--color-primary-600)); }
+  .bg-accent-500 { background-color: rgb(var(--color-accent-500)); }
+
+  /* Glassmorphism */
+  .glass {
+    background: rgba(24, 24, 32, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
   }
   
-  /* Gradient utilities */
+  .glass-card {
+    background: linear-gradient(145deg, rgba(35, 35, 46, 0.4) 0%, rgba(24, 24, 32, 0.6) 100%);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.2);
+  }
+
+  /* Glows */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px rgba(255, 79, 112, 0.3);
+  }
+  .glow-text {
+    text-shadow: 0 0 10px rgba(255, 79, 112, 0.5);
+  }
+
+  /* Text colors */
+  .text-text-high { color: rgb(var(--color-text-high)); }
+  .text-text-med { color: rgb(var(--color-text-med)); }
+  .text-text-low { color: rgb(var(--color-text-low)); }
+  .text-primary-500 { color: rgb(var(--color-primary-500)); }
+  .text-accent-500 { color: rgb(var(--color-accent-500)); }
+  .text-error { color: rgb(var(--color-error)); }
+  .text-success { color: rgb(var(--color-success)); }
+  .text-warning { color: rgb(var(--color-warning)); }
+
+  /* Borders */
+  .border-surface-700 { border-color: rgb(var(--color-surface-700)); }
+  .border-surface-800 { border-color: rgb(var(--color-surface-800)); }
+  .border-primary-500 { border-color: rgb(var(--color-primary-500)); }
+
+  /* Gradients */
   .gradient-primary {
-    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-accent-500)));
+    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-primary-600)));
   }
   .text-gradient-primary {
-    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-accent-500)));
+    background: linear-gradient(135deg, rgb(var(--color-primary-500)), rgb(var(--color-primary-600)));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  .bg-gradient-dark {
+    background: radial-gradient(circle at 50% 0%, #1a1a24 0%, #0e0e15 100%);
+  }
+
+  /* Scrollbar hide */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ─── Animations ─── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes pulseBorder {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 79, 112, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(255, 79, 112, 0.4); }
+}
+
+@layer utilities {
+  .animate-fade-in-up { animation: fadeInUp 0.5s ease-out forwards; }
+  .animate-scale-in { animation: scaleIn 0.3s ease-out forwards; }
+  .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+  .animate-fade-out { animation: fadeOut 0.3s ease-out forwards; }
+  .animate-pulse-border { animation: pulseBorder 2s infinite; }
 }
