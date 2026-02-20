@@ -6,6 +6,7 @@
   [![Built with Next.js](https://img.shields.io/badge/Next.js-16.1-black?style=flat-square&logo=next.js)](https://nextjs.org/)
   [![XRPL](https://img.shields.io/badge/XRPL-4.5.0-blue?style=flat-square)](https://xrpl.org/)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
+  [![RLUSD](https://img.shields.io/badge/RLUSD-Enabled-green?style=flat-square)](https://ripple.com/solutions/crypto-liquidity/)
   
   <p><a href="https://www.youtube.com/watch?v=utLo90ceZaI">Watch Demo Video</a></p>
 </div>
@@ -16,8 +17,9 @@
 
 **SuzuPay** is a next-generation financial platform built on the **XRP Ledger** that bridges the gap between traditional commerce and decentralized finance. It provides merchants with two powerful capabilities:
 
-1. **Instant Crypto Payments** — Accept XRP payments through QR codes with settlement in 3-5 seconds and fees under $0.01
-2. **Micro-Financing Campaigns** — Raise working capital by issuing tokenized IOUs backed by future revenue streams
+1. **Instant Crypto Payments** — Accept XRP or RLUSD stablecoin payments via QR codes with settlement in 3-5 seconds and fees under $0.01
+2. **RLUSD Instant Settlement** — Receive Ripple USD directly to your wallet for predictable, fiat-stable treasury management
+3. **Micro-Financing Campaigns** — Raise working capital by issuing tokenized IOUs backed by future revenue streams
 
 By leveraging XRPL's speed, low costs, and programmable tokens, SuzuPay democratizes access to financial services for small and medium enterprises worldwide.
 
@@ -26,8 +28,9 @@ By leveraging XRPL's speed, low costs, and programmable tokens, SuzuPay democrat
 ## Key Features
 
 ### For Merchants
-- **Wallet Integration** — Connect instantly via Crossmark or Xaman (Xumm)
-- **QR Payment Generation** — Create payment requests with custom amounts in seconds
+- **Wallet Integration** — Connect instantly via Crossmark or Xaman (Xumm) in under 60 seconds
+- **QR Payment Generation** — Create XRP or RLUSD payment requests with custom amounts in seconds
+- **RLUSD TrustLine Management** — Enable stablecoin payments with a single in-app transaction
 - **Real-Time Settlement** — Receive funds directly to your wallet with instant confirmation
 - **Financing Campaigns** — Launch micro-financing initiatives by issuing standardized tokens
 - **Dashboard Analytics** — Track payments, funding progress, and investor engagement
@@ -50,11 +53,13 @@ By leveraging XRPL's speed, low costs, and programmable tokens, SuzuPay democrat
 ## Technology Stack
 
 | Category | Technologies |
-|----------|-------------|
+|----------|--------------|
 | **Frontend** | Next.js 16, React 19, TypeScript 5 |
 | **Styling** | Tailwind CSS 4, Radix UI, Lucide Icons |
 | **Blockchain** | XRPL 4.5, xrpl.js SDK |
 | **Wallet Integration** | Crossmark SDK, xrpl-connect (Xaman) |
+| **Stablecoin** | RLUSD (Ripple USD) — Testnet & Mainnet |
+| **Backend / Database** | Prisma ORM 7, SQLite |
 | **QR Functionality** | qrcode.react |
 | **State Management** | React Context API |
 | **Package Manager** | pnpm |
@@ -82,13 +87,18 @@ By leveraging XRPL's speed, low costs, and programmable tokens, SuzuPay democrat
    pnpm install
    ```
 
-3. **Run the development server**
+3. **Initialize the database**
+   ```bash
+   pnpm dlx prisma migrate dev
+   ```
+
+4. **Run the development server**
    ```bash
    pnpm dev
    ```
 
-4. **Open in your browser**
-   
+5. **Open in your browser**
+
    Navigate to [http://localhost:3000](http://localhost:3000)
 
 ### Configuration
@@ -138,8 +148,11 @@ Network settings can be configured in [src/lib/xrpl-client.ts](src/lib/xrpl-clie
 
 ```
 suzupay-xrpl/
+├── prisma/                    # Database schema & migrations
+│   └── schema.prisma
 ├── src/
-│   ├── app/                    # Next.js App Router pages
+│   ├── app/                   # Next.js App Router pages
+│   │   ├── api/merchant/      # REST API — merchant profiles
 │   │   ├── merchant/          # Merchant portal
 │   │   ├── invest/            # Investor dashboard
 │   │   └── pay/               # Payment interface
@@ -149,9 +162,11 @@ suzupay-xrpl/
 │   │   ├── qr-generator.tsx
 │   │   └── payment-confirmation.tsx
 │   ├── lib/                   # Core utilities & SDKs
-│   │   ├── xrpl-client.ts    # XRPL connection
-│   │   ├── wallet-context.tsx # Wallet state management
-│   │   └── payment.ts         # Payment logic
+│   │   ├── xrpl-client.ts     # XRPL connection
+│   │   ├── wallet-context.tsx  # Wallet state management
+│   │   ├── token-utils.ts     # RLUSD & token helpers
+│   │   ├── payment.ts         # Payment transaction builder
+│   │   └── prisma.ts          # Prisma client singleton
 │   └── types/                 # TypeScript definitions
 ├── public/                    # Static assets
 └── Docs/                      # Documentation

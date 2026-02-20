@@ -19,6 +19,14 @@ export interface TokenInfo {
   value: string;
 }
 
+// ── RLUSD Configuration ──────────────────────────────────────────────────
+export const RLUSD_CONFIG: TokenInfo = {
+  currency: 'RLUSD',
+  // Default to Testnet issuer if environment variable is not explicitly set
+  issuer: process.env.NEXT_PUBLIC_RLUSD_ISSUER || process.env.NEXT_PUBLIC_RLUSD_ISSUER_TESTNET || 'rQhWct2VNDRj1toKchXEqEUNyHkE5y14Wz',
+  value: '0' // For TokenInfo compatibility
+};
+
 // ── Account Configuration ────────────────────────────────────────────────
 
 /**

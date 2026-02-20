@@ -20,6 +20,7 @@ interface ParsedPayment {
   destination: string;
   amount: string;
   currency: string;
+  issuer?: string;
   memo?: string;
   isXamanURL: boolean;
 }
@@ -62,6 +63,7 @@ export default function PayPage() {
       destination: parsed.destination,
       amount: parsed.amount,
       currency: parsed.currency || 'XRP',
+      issuer: parsed.issuer,
       memo: parsed.memo,
       isXamanURL: parsed.isXamanURL,
     });
@@ -105,7 +107,8 @@ export default function PayPage() {
         source: address,
         destination: parsedPayment.destination,
         amount: parsedPayment.amount,
-        currency: 'XRP',
+        currency: parsedPayment.currency,
+        issuer: parsedPayment.issuer,
         memo: parsedPayment.memo
       });
 
@@ -139,9 +142,14 @@ export default function PayPage() {
   // Check balance is sufficient
   const hasSufficientBalance = () => {
     if (!balance || !parsedPayment) return false;
+    
+    // For hackathon scope, bypass strict balance checks for issued currencies 
+    // since we can't synchronously check non-XRP token balance easily here.
+    if (parsedPayment.currency !== 'XRP') return true;
+
     const balanceNum = parseFloat(balance);
     const amountNum = parseFloat(parsedPayment.amount);
-    return balanceNum >= amountNum + 3.00001;
+    return balanceNum >= amountNum + 3.00001; // Base reserve buffer
   };
 
   return (

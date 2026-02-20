@@ -3,21 +3,23 @@ import { Payment, xrpToDrops } from 'xrpl';
 interface BuildPaymentParams {
   source: string;
   destination: string;
-  amount: string; // Amount in XRP (decimal string)
-  currency?: 'XRP'; // Currently only XRP supported for straightforward payments
+  amount: string; // Amount in decimal string
+  currency?: string; // e.g. 'XRP' or 'RLUSD'
+  issuer?: string; // Required for issued currencies
   destinationTag?: number;
   memo?: string;
 }
 
 /**
- * Builds a standard XRP Payment transaction object.
- * Converts XRP amount to drops automatically.
+ * Builds a standard XRPL Payment transaction object.
+ * Converts XRP amount to drops automatically, formats issued currencies correctly.
  */
 export function buildPaymentTx({
   source,
   destination,
   amount,
   currency = 'XRP',
+  issuer,
   destinationTag,
   memo
 }: BuildPaymentParams): Payment {
@@ -25,13 +27,23 @@ export function buildPaymentTx({
     throw new Error('Missing required payment parameters');
   }
 
-  const drops = xrpToDrops(amount);
+  if (currency !== 'XRP' && !issuer) {
+    throw new Error('Issuer is required for issued currencies');
+  }
+
+  const xrplAmount = currency === 'XRP' 
+    ? xrpToDrops(amount)
+    : {
+        currency: currency,
+        issuer: issuer as string,
+        value: amount
+      };
 
   const tx: Payment = {
     TransactionType: 'Payment',
     Account: source,
     Destination: destination,
-    Amount: drops,
+    Amount: xrplAmount,
   };
 
   if (destinationTag) {

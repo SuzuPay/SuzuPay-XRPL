@@ -1,0 +1,15 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Merchant {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique
+  businessName  String
+  email         String?
+  createdAt     DateTime @default(now())
+}

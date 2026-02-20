@@ -13,7 +13,10 @@ import {
   ensureDefaultRipple,
   constructSellOfferTx,
   getAccountTokens,
-  TokenInfo
+  TokenInfo,
+  hasTrustLine,
+  constructTrustSetTx,
+  RLUSD_CONFIG
 } from '@/lib/token-utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,13 +57,83 @@ export default function MerchantPage() {
   const [tokenData, setTokenData] = useState<TokenInfo | null>(null);
   const [isLoadingToken, setIsLoadingToken] = useState(false);
 
-  // Poll for existing MPT on load
+  // Profile State
+  const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+  const [checkingProfile, setCheckingProfile] = useState(false);
+  const [businessName, setBusinessName] = useState('');
+  const [email, setEmail] = useState('');
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  // RLUSD State
+  const [hasRlusdTrustline, setHasRlusdTrustline] = useState<boolean | null>(null);
+  const [isEnablingRlusd, setIsEnablingRlusd] = useState(false);
+  const [paymentCurrency, setPaymentCurrency] = useState<'XRP' | 'RLUSD'>('XRP');
+
+  // Check merchant profile on connect
+  useEffect(() => {
+    let mounted = true;
+    if (isConnected && address && hasProfile === null && !checkingProfile) {
+      setCheckingProfile(true);
+      fetch(`/api/merchant/${address}`)
+        .then(async (res) => {
+          if (!mounted) return;
+          if (res.ok) {
+            setHasProfile(true);
+          } else {
+            setHasProfile(false);
+          }
+        })
+        .catch(() => {
+          if (mounted) setHasProfile(false);
+        })
+        .finally(() => {
+          if (mounted) setCheckingProfile(false);
+        });
+    }
+    return () => { mounted = false; };
+  }, [isConnected, address, hasProfile, checkingProfile]);
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!businessName.trim()) {
+      setProfileError("Business Name is required");
+      return;
+    }
+    setSavingProfile(true);
+    setProfileError('');
+    try {
+      const res = await fetch('/api/merchant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ walletAddress: address, businessName, email })
+      });
+      if (res.ok) {
+        setHasProfile(true);
+      } else {
+        const data = await res.json();
+        setProfileError(data.error || "Failed to save profile");
+      }
+    } catch (err) {
+      setProfileError("Network error. Please try again.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Poll for existing MPT and RLUSD lines on load
   useEffect(() => {
     if (address && isConnected) {
       setIsLoadingToken(true);
+      
+      // Check RLUSD Trustline
+      hasTrustLine(address, RLUSD_CONFIG)
+        .then(res => setHasRlusdTrustline(res))
+        .catch(console.error);
+
+      // Check MPT/Tokens
       getAccountTokens(address)
         .then(tokens => {
-          // Find our specific financing token if it exists
           const fundToken = tokens.find(t => t.currency === 'SZP' || t.currency.startsWith('SZP'));
           if (fundToken) {
             setTokenData(fundToken);
@@ -70,6 +143,21 @@ export default function MerchantPage() {
         .finally(() => setIsLoadingToken(false));
     }
   }, [address, isConnected]);
+
+  const handleEnableRlusd = async () => {
+    if (!address) return;
+    setIsEnablingRlusd(true);
+    try {
+      const tx = constructTrustSetTx(address, RLUSD_CONFIG);
+      await signAndSubmit(tx);
+      // Once signed, update local state
+      setHasRlusdTrustline(true);
+    } catch (err) {
+      console.error("Failed to enable RLUSD", err);
+    } finally {
+      setIsEnablingRlusd(false);
+    }
+  };
 
   // Subscribe to incoming payments when waiting
   useEffect(() => {
@@ -135,10 +223,14 @@ export default function MerchantPage() {
 
     const xamanPayment = generateXamanPaymentURL(address, amount, {
       network: 'XRPL',
+      currency: paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.currency : 'XRP',
+      issuer: paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.issuer : undefined,
     });
 
     const genericQR = generateGenericPaymentRequest(address, amount, {
       memo: description || `SuzuPay Payment ${paymentId}`,
+      currency: paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.currency : 'XRP',
+      issuer: paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.issuer : undefined,
     });
 
     setPendingPayment({
@@ -262,6 +354,52 @@ export default function MerchantPage() {
             </p>
             <WalletConnectButton />
           </div>
+        ) : checkingProfile || hasProfile === null ? (
+          /* Loading Profile State */
+          <div className="text-center py-16 animate-pulse">
+            <div className="w-16 h-16 rounded-full border-4 border-[rgb(var(--color-primary))] border-t-transparent animate-spin mx-auto mb-6"></div>
+            <h2 className="text-xl font-bold text-text-high">Loading Profile...</h2>
+          </div>
+        ) : hasProfile === false ? (
+          /* Missing Profile State */
+          <Card className="glass-card border-0 max-w-md mx-auto mt-8 animate-fade-in">
+            <CardHeader>
+              <CardTitle className="text-2xl font-bold text-center text-text-high">Complete Profile</CardTitle>
+              <CardDescription className="text-center text-text-med">Set up your merchant details to proceed</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleProfileSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-text-med mb-2">Business Name <span className="text-[rgb(var(--color-primary))]">*</span></label>
+                  <Input 
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    placeholder="e.g. Suzu Sushi"
+                    className="bg-surface-800 border-surface-700 text-text-high" 
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-text-med mb-2">Email (Optional)</label>
+                  <Input 
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="contact@example.com"
+                    className="bg-surface-800 border-surface-700 text-text-high" 
+                  />
+                </div>
+                {profileError && <p className="text-[rgb(var(--color-primary))] text-sm">{profileError}</p>}
+                <Button 
+                  type="submit" 
+                  disabled={savingProfile}
+                  className="w-full bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary))]/90 text-white mt-4 font-bold rounded-xl h-12"
+                >
+                  {savingProfile ? "Saving..." : "Start Accepting Payments"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         ) : (
           /* Connected State */
           <div className="space-y-6">
@@ -335,19 +473,48 @@ export default function MerchantPage() {
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-text-med mb-2">
-                          Amount (XRP)
-                        </label>
-                        <Input
-                          type="number"
-                          value={amount}
-                          onChange={(e) => setAmount(e.target.value)}
-                          placeholder="0.00"
-                          min="0"
-                          step="0.000001"
-                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
-                        />
+                      {paymentCurrency === 'RLUSD' && hasRlusdTrustline === false && (
+                        <div className="p-4 bg-[rgb(var(--color-warning))]/10 border border-[rgb(var(--color-warning))]/20 rounded-xl mb-4 animate-fade-in">
+                          <h4 className="font-semibold text-[rgb(var(--color-warning))] mb-2">RLUSD Not Enabled</h4>
+                          <p className="text-sm text-text-med mb-3">You need to establish a trustline to receive RLUSD payments.</p>
+                          <Button 
+                            onClick={handleEnableRlusd} 
+                            disabled={isEnablingRlusd}
+                            className="w-full bg-[rgb(var(--color-warning))] hover:bg-[rgb(var(--color-warning))]/90 text-black font-semibold"
+                          >
+                            {isEnablingRlusd ? "Enabling..." : "Enable RLUSD Payments"}
+                          </Button>
+                        </div>
+                      )}
+
+                      <div className="flex gap-3">
+                        <div className="flex-1">
+                          <label className="block text-sm font-medium text-text-med mb-2">
+                            Amount
+                          </label>
+                          <Input
+                            type="number"
+                            value={amount}
+                            onChange={(e) => setAmount(e.target.value)}
+                            placeholder="0.00"
+                            min="0"
+                            step="0.000001"
+                            className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-primary))] focus-visible:ring-[rgb(var(--color-primary))]/20 h-10 rounded-xl"
+                          />
+                        </div>
+                        <div className="w-[120px]">
+                          <label className="block text-sm font-medium text-text-med mb-2">
+                            Currency
+                          </label>
+                          <select 
+                            value={paymentCurrency} 
+                            onChange={(e) => setPaymentCurrency(e.target.value as 'XRP' | 'RLUSD')}
+                            className="w-full bg-surface-700 border-surface-700 text-text-high focus:border-[rgb(var(--color-primary))] focus-visible:ring-[rgb(var(--color-primary))]/20 h-10 rounded-xl px-3 outline-none"
+                          >
+                            <option value="XRP">XRP</option>
+                            <option value="RLUSD">RLUSD</option>
+                          </select>
+                        </div>
                       </div>
 
                       <div>
@@ -359,14 +526,14 @@ export default function MerchantPage() {
                           value={description}
                           onChange={(e) => setDescription(e.target.value)}
                           placeholder="e.g., Coffee order #123"
-                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-primary-500 focus-visible:ring-primary-500/20 h-12 rounded-xl"
+                          className="bg-surface-700 border-surface-700 text-text-high placeholder:text-text-low focus:border-[rgb(var(--color-primary))] focus-visible:ring-[rgb(var(--color-primary))]/20 h-10 rounded-xl"
                         />
                       </div>
 
                       <Button
                         onClick={handleGenerateQR}
-                        disabled={!amount || parseFloat(amount) <= 0}
-                        className="w-full h-12 rounded-xl font-semibold bg-primary-500 hover:bg-primary-600 text-white shadow-lg shadow-[rgba(255,79,112,0.2)]"
+                        disabled={!amount || parseFloat(amount) <= 0 || (paymentCurrency === 'RLUSD' && hasRlusdTrustline === false)}
+                        className="w-full h-12 rounded-xl font-semibold bg-[rgb(var(--color-primary))] hover:bg-[rgb(var(--color-primary))]/90 text-white shadow-lg shadow-[rgba(var(--color-primary),0.2)] mt-2"
                       >
                         Generate QR Code
                       </Button>
@@ -382,7 +549,7 @@ export default function MerchantPage() {
                           <Clock className="w-5 h-5 text-primary-500 animate-pulse" />
                           <span className="text-sm text-text-med">Waiting for payment...</span>
                         </div>
-                        <h3 className="text-3xl font-bold text-primary-500 mb-1">{pendingPayment.amount} XRP</h3>
+                        <h3 className="text-3xl font-bold text-[rgb(var(--color-primary))] mb-1">{pendingPayment.amount} {paymentCurrency}</h3>
                         {pendingPayment.description && (
                           <p className="text-sm text-text-med">&quot;{pendingPayment.description}&quot;</p>
                         )}
@@ -413,7 +580,8 @@ export default function MerchantPage() {
                           <QRGenerator 
                             destination={address!}
                             amount={pendingPayment.amount}
-                            currency="XRP"
+                            currency={paymentCurrency}
+                            issuer={paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.issuer : undefined}
                             type={qrType}
                             size={220}
                           />
