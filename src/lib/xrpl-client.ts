@@ -1,6 +1,6 @@
 /**
  * XRPL Client Configuration
- * Handles connection to XRPL Testnet for payment transactions
+ * Handles connection to XRPL Mainnet for payment transactions
  */
 
 import { Client, Wallet, Payment, xrpToDrops, dropsToXrp } from 'xrpl';
@@ -16,7 +16,7 @@ export type NetworkType = keyof typeof XRPL_NETWORKS;
 
 // Get current network from env
 export const getCurrentNetwork = (): NetworkType => {
-  const network = process.env.NEXT_PUBLIC_XRPL_NETWORK || 'testnet';
+  const network = process.env.NEXT_PUBLIC_XRPL_NETWORK || 'mainnet';
   return network as NetworkType;
 };
 
@@ -56,8 +56,11 @@ export async function getClient(): Promise<Client> {
     clientInstance = new Client(url);
   }
 
+  const wasDisconnected = !clientInstance.isConnected();
   await ensureConnected(clientInstance);
-  console.log(`✅ Connected to XRPL ${getCurrentNetwork()}: ${getNetworkUrl()}`);
+  if (wasDisconnected) {
+    console.log(`✅ Connected to XRPL ${getCurrentNetwork()}: ${getNetworkUrl()}`);
+  }
 
   return clientInstance;
 }
@@ -94,13 +97,14 @@ export async function getAccountInfo(address: string) {
       ownerCount: response.result.account_data.OwnerCount,
     };
   } catch (error: any) {
-    if (error.message?.includes('actNotFound')) {
+    const msg = error.message || error.data?.error || '';
+    if (msg.includes('actNotFound') || msg.includes('Account malformed') || msg.includes('invalidParams')) {
       return {
         address,
         balance: '0',
         sequence: 0,
         ownerCount: 0,
-        error: 'Account not found on ledger',
+        error: msg.includes('actNotFound') ? 'Account not found on ledger' : 'Invalid account address',
       };
     }
     throw error;

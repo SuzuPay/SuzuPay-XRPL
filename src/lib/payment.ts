@@ -1,5 +1,20 @@
 import { Payment, xrpToDrops } from 'xrpl';
 
+/**
+ * XRPL requires non-3-char currency codes as 40-char hex strings.
+ * 3-char codes (e.g. 'USD', 'EUR') are passed as-is.
+ */
+function encodeCurrencyCode(code: string): string {
+  if (code.length === 3) return code;
+  // If already a 40-char hex string (e.g. from RLUSD_CONFIG.currency), pass through
+  if (code.length === 40 && /^[0-9A-Fa-f]{40}$/.test(code)) return code;
+  // Convert ASCII to hex and right-pad to 40 chars (20 bytes)
+  const hex = Array.from(code)
+    .map(c => c.charCodeAt(0).toString(16).toUpperCase())
+    .join('');
+  return hex.padEnd(40, '0');
+}
+
 interface BuildPaymentParams {
   source: string;
   destination: string;
@@ -34,7 +49,7 @@ export function buildPaymentTx({
   const xrplAmount = currency === 'XRP' 
     ? xrpToDrops(amount)
     : {
-        currency: currency,
+        currency: encodeCurrencyCode(currency),
         issuer: issuer as string,
         value: amount
       };
@@ -54,7 +69,7 @@ export function buildPaymentTx({
     tx.Memos = [
       {
         Memo: {
-          MemoData: Buffer.from(memo, 'utf8').toString('hex')
+          MemoData: Buffer.from(memo, 'utf8').toString('hex').toUpperCase()
         }
       }
     ];

@@ -25,12 +25,23 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
 
+export interface PaymentRequestRecord {
+  id: string;
+  amount: string;
+  currency: string;
+  description: string | null;
+  status: string;
+  txHash: string | null;
+  createdAt: string;
+}
+
 type PaymentStatus = 'idle' | 'waiting' | 'received' | 'expired';
 
 const XRPL_CLASSIC_ADDRESS_REGEX = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
 
 interface PendingPayment {
   id: string;
+  dbId: string;
   amount: string;
   description: string;
   xamanUrl: string;
@@ -54,6 +65,8 @@ export default function MerchantPage() {
   const [qrType, setQrType] = useState<'xaman' | 'generic'>('xaman');
   const [receivedAmount, setReceivedAmount] = useState<string | null>(null);
   const [receivedTxHash, setReceivedTxHash] = useState<string | null>(null);
+  const [recentPayments, setRecentPayments] = useState<PaymentRequestRecord[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
 
   // Financing State
   const [financingGoal, setFinancingGoal] = useState('');
@@ -104,6 +117,9 @@ export default function MerchantPage() {
 
           if (res.ok) {
             setHasProfile(Boolean(data?.exists));
+            if (data?.exists) {
+              fetchRecentPayments(normalizedAddress);
+            }
           } else {
             setHasProfile(false);
             setProfileError(data?.error || 'Failed to load merchant profile');
@@ -130,6 +146,21 @@ export default function MerchantPage() {
     // checkingProfile intentionally excluded — using fetchingRef to prevent feedback loop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isConnected, normalizedAddress, hasValidAddress, hasProfile]);
+
+  const fetchRecentPayments = async (address: string) => {
+    setLoadingPayments(true);
+    try {
+      const res = await fetch(`/api/payments?merchantAddress=${address}`);
+      if (res.ok) {
+        const data = await res.json();
+        setRecentPayments(data.paymentRequests || []);
+      }
+    } catch (err) {
+      console.error("Failed to fetch recent payments", err);
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
 
   useEffect(() => {
     if (!isConnected) {
@@ -266,6 +297,16 @@ export default function MerchantPage() {
               setReceivedAmount(receivedXRP);
               setReceivedTxHash(tx.transaction.hash);
               setPaymentStatus('received');
+              
+              // Update DB to completed
+              fetch(`/api/payments/${pendingPayment.dbId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  status: 'completed', 
+                  txHash: tx.transaction.hash 
+                })
+              }).then(() => fetchRecentPayments(normalizedAddress));
             }
           }
         });
@@ -291,13 +332,20 @@ export default function MerchantPage() {
       if (new Date() > pendingPayment.expiresAt) {
         setPaymentStatus('expired');
         clearInterval(checkExpiry);
+        
+        // Update DB to expired
+        fetch(`/api/payments/${pendingPayment.dbId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'expired' })
+        }).then(() => fetchRecentPayments(normalizedAddress));
       }
     }, 1000);
 
     return () => clearInterval(checkExpiry);
-  }, [pendingPayment, paymentStatus]);
+  }, [pendingPayment, paymentStatus, normalizedAddress]);
 
-  const handleGenerateQR = useCallback(() => {
+  const handleGenerateQR = useCallback(async () => {
     if (!amount || parseFloat(amount) <= 0 || !normalizedAddress || !hasValidAddress) return;
 
     const paymentId = generatePaymentId();
@@ -315,16 +363,39 @@ export default function MerchantPage() {
       issuer: paymentCurrency === 'RLUSD' ? RLUSD_CONFIG.issuer : undefined,
     });
 
-    setPendingPayment({
-      id: paymentId,
-      amount,
-      description,
-      xamanUrl: xamanPayment.qrData,
-      genericQR,
-      createdAt: new Date(),
-      expiresAt,
-    });
-    setPaymentStatus('waiting');
+    try {
+      // Create backend record
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          merchantAddress: normalizedAddress,
+          amount,
+          currency: paymentCurrency,
+          description: description || `SuzuPay Payment ${paymentId}`,
+          expiresAt: expiresAt.toISOString()
+        })
+      });
+      
+      if (!res.ok) throw new Error('Failed to create payment record');
+      const dbRecord = await res.json();
+
+      setPendingPayment({
+        id: paymentId,
+        dbId: dbRecord.id,
+        amount,
+        description,
+        xamanUrl: xamanPayment.qrData,
+        genericQR,
+        createdAt: new Date(),
+        expiresAt,
+      });
+      setPaymentStatus('waiting');
+      fetchRecentPayments(normalizedAddress);
+    } catch (err) {
+      console.error('Failed to generate payment:', err);
+      alert('Failed to initialize payment tracking. Please try again.');
+    }
   }, [amount, description, normalizedAddress, hasValidAddress, paymentCurrency]);
 
   const handleCopyAddress = async () => {
@@ -352,6 +423,43 @@ export default function MerchantPage() {
     setReceivedAmount(null);
     setReceivedTxHash(null);
   };
+
+  // Re-open a pending payment from Recent Transactions to show QR again
+  const handleReopenPayment = useCallback((payment: PaymentRequestRecord) => {
+    if (payment.status !== 'pending' || !normalizedAddress) return;
+
+    const currencyHex = payment.currency === 'RLUSD' ? RLUSD_CONFIG.currency : 'XRP';
+    const issuer = payment.currency === 'RLUSD' ? RLUSD_CONFIG.issuer : undefined;
+
+    const xamanPayment = generateXamanPaymentURL(normalizedAddress, payment.amount, {
+      network: 'XRPL',
+      currency: currencyHex,
+      issuer,
+    });
+
+    const genericQR = generateGenericPaymentRequest(normalizedAddress, payment.amount, {
+      memo: payment.description || `SuzuPay Payment`,
+      currency: currencyHex,
+      issuer,
+    });
+
+    // Refresh expiry to 15 minutes from NOW so the reopened QR can be scanned
+    const now = new Date();
+    const created = new Date(payment.createdAt);
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+
+    setPendingPayment({
+      id: payment.id,
+      dbId: payment.id,
+      amount: payment.amount,
+      description: payment.description || '',
+      xamanUrl: xamanPayment.qrData,
+      genericQR,
+      createdAt: created,
+      expiresAt,
+    });
+    setPaymentStatus('waiting');
+  }, [normalizedAddress]);
 
   const getTimeRemaining = () => {
     if (!pendingPayment) return '';
@@ -740,7 +848,7 @@ export default function MerchantPage() {
                       
                       {receivedTxHash && (
                         <a
-                          href={`https://testnet.xrpl.org/transactions/${receivedTxHash}`}
+                          href={`https://livenet.xrpl.org/transactions/${receivedTxHash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 text-sm text-primary-500 hover:underline mb-6"
@@ -777,6 +885,77 @@ export default function MerchantPage() {
                       >
                         Generate New QR
                       </Button>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Recent Transactions Dashboard */}
+                {paymentStatus === 'idle' && (
+                  <Card className="glass-card border-0 mt-8">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center justify-between">
+                        Recent Transactions
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          onClick={() => fetchRecentPayments(normalizedAddress)}
+                          disabled={loadingPayments}
+                          className="h-8 w-8 p-0"
+                        >
+                          <RefreshCw className={`w-4 h-4 ${loadingPayments ? 'animate-spin' : ''}`} />
+                        </Button>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {recentPayments.length === 0 ? (
+                        <p className="text-center text-text-med py-4 text-sm">No recent transactions found.</p>
+                      ) : (
+                        <div className="space-y-3">
+                          {recentPayments.map(payment => (
+                            <div
+                              key={payment.id}
+                              onClick={() => payment.status === 'pending' && handleReopenPayment(payment)}
+                              className={`flex items-center justify-between p-3 bg-surface-900/40 rounded-xl border border-white/5 transition-colors ${
+                                payment.status === 'pending'
+                                  ? 'cursor-pointer hover:bg-surface-800/60 hover:border-primary-500/20'
+                                  : ''
+                              }`}
+                            >
+                              <div>
+                                <p className="font-semibold text-text-high">{payment.amount} {payment.currency}</p>
+                                <p className="text-xs text-text-low">{new Date(payment.createdAt).toLocaleDateString()} {new Date(payment.createdAt).toLocaleTimeString()}</p>
+                                {payment.description && <p className="text-xs text-text-med mt-1 truncate max-w-[150px] sm:max-w-xs">{payment.description}</p>}
+                              </div>
+                              <div className="text-right flex flex-col items-end gap-1">
+                                <Badge variant="secondary" className={`
+                                  ${payment.status === 'completed' ? 'bg-[rgb(var(--color-success))]/15 text-success' : ''}
+                                  ${payment.status === 'pending' ? 'bg-[rgb(var(--color-warning))]/15 text-warning' : ''}
+                                  ${payment.status === 'expired' ? 'bg-surface-700 text-text-med' : ''}
+                                  border-0
+                                `}>
+                                  {payment.status}
+                                </Badge>
+                                {payment.status === 'pending' && (
+                                  <span className="text-xs text-primary-500 flex items-center gap-1">
+                                    <QrCode className="w-3 h-3" /> Show QR
+                                  </span>
+                                )}
+                                {payment.txHash && (
+                                  <a
+                                    href={`https://livenet.xrpl.org/transactions/${payment.txHash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-xs text-primary-500 hover:underline flex items-center gap-1"
+                                  >
+                                    View <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}

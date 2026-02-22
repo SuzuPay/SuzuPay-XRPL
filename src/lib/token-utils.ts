@@ -31,9 +31,9 @@ const RLUSD_CURRENCY_HEX = '524C555344' + '0'.repeat(30); // 40 chars total
 
 export const RLUSD_CONFIG: TokenInfo = {
   currency: RLUSD_CURRENCY_HEX,
-  // Correct testnet issuer from Ripple official docs:
-  // https://stablecoin.redocly.app/products/stablecoin/developer-resources/rlusd-on-the-xrpl
-  issuer: process.env.NEXT_PUBLIC_RLUSD_ISSUER || process.env.NEXT_PUBLIC_RLUSD_ISSUER_TESTNET || 'rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV',
+  // Mainnet issuer from Ripple (RLUSD on XRPL mainnet):
+  // https://xrpscan.com/account/rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De
+  issuer: process.env.NEXT_PUBLIC_RLUSD_ISSUER || 'rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De',
   value: '0' // For TokenInfo compatibility
 };
 

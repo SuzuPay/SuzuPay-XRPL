@@ -58,6 +58,7 @@ const initialState: WalletState = {
   activeWalletId: null,
 };
 
+const STORAGE_KEY = 'suzupay_active_wallet';
 const WalletContext = createContext<WalletContextType | null>(null);
 
 // ── Wallet Manager Factory ───────────────────────────────────────────
@@ -65,6 +66,9 @@ const WalletContext = createContext<WalletContextType | null>(null);
 /**
  * Build xrpl-connect WalletManager with all available adapters.
  * Only adds adapters that have the required config (API keys, etc).
+ *
+ * autoConnect is disabled — we handle reconnection manually so browser
+ * extensions (Crossmark) have time to inject before we attempt to reach them.
  */
 function createWalletManager() {
   const adapters = [];
@@ -100,9 +104,9 @@ function createWalletManager() {
 
   const manager = new WalletManager({
     adapters,
-    network: STANDARD_NETWORKS.testnet,
-    autoConnect: true,
-    logger: { level: 'info' },
+    network: STANDARD_NETWORKS.mainnet,
+    autoConnect: false,  // We handle reconnection manually (see useEffect below)
+    logger: { level: 'warn' },
   });
 
   return { manager, registeredIds };
@@ -129,19 +133,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     // ── Event Handlers ──────────────────────────────────────────────
     const handleConnect = (account: Account) => {
+      const walletId = manager.wallet?.id || null;
+      // Persist active wallet so we can reconnect after page refresh
+      if (walletId) {
+        try { localStorage.setItem(STORAGE_KEY, walletId); } catch {}
+      }
       setState(prev => ({
         ...prev,
         isConnected: true,
         isConnecting: false,
         address: account.address,
-        network: account.network?.name || 'testnet',
+        network: account.network?.name || 'mainnet',
         walletName: manager.wallet?.name || 'Unknown',
-        activeWalletId: manager.wallet?.id || null,
+        activeWalletId: walletId,
         error: null,
       }));
     };
 
     const handleDisconnect = () => {
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
       setState(prev => ({
         ...prev,
         isConnected: false,
@@ -154,6 +164,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
 
     const handleError = (error: Error) => {
+      // Suppress noisy "not available" errors during autoConnect attempts
+      if (error.message?.includes('not currently available')) return;
       setState(prev => ({
         ...prev,
         isConnecting: false,
@@ -185,12 +197,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     (manager as any).on('accountChange', handleAccountChange);
     (manager as any).on('networkChange', handleNetworkChange);
 
-    // Check if already connected (e.g. autoConnect)
-    if (manager.connected && manager.account) {
-      handleConnect(manager.account);
+    // ── Manual Reconnect (replaces autoConnect) ─────────────────────
+    // Wait 500ms for browser extensions to inject, then try to reconnect
+    // to the wallet the user previously had connected.
+    const savedWalletId = (() => {
+      try { return localStorage.getItem(STORAGE_KEY); } catch { return null; }
+    })();
+
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    if (savedWalletId) {
+      reconnectTimer = setTimeout(async () => {
+        // For Crossmark, verify the extension is present before attempting
+        if (savedWalletId === 'crossmark' && !isCrossmarkInstalled()) return;
+        try {
+          await manager.connect(savedWalletId);
+        } catch {
+          // Silent — user will see "Connect Wallet" button as normal
+          try { localStorage.removeItem(STORAGE_KEY); } catch {}
+        }
+      }, 500);
     }
 
     return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       manager.off('connect', handleConnect);
       manager.off('disconnect', handleDisconnect);
       manager.off('error', handleError);
@@ -227,6 +256,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       if (isCrossmarkInstalled() && (walletId === 'crossmark' || !walletId)) {
         try {
           const result: ConnectionResult = await crossmarkConnect();
+          try { localStorage.setItem(STORAGE_KEY, 'crossmark'); } catch {}
           setState(prev => ({
             ...prev,
             isConnected: true,
@@ -265,6 +295,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     } catch (error: any) {
       console.error('[WalletContext] Disconnect error:', error.message);
     }
+    // Clear persisted session
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
     // Always reset state (even on error) for clean disconnect UX
     setState(prev => ({
       ...prev,
@@ -284,15 +316,56 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       throw new Error('Wallet not connected');
     }
 
+    // Helper: validate XRPL engine result codes
+    // Transactions can be "applied" to the ledger with a tec failure code (fee consumed but payment fails)
+    const validateResult = (result: any) => {
+      if (!result) throw new Error('Wallet returned an empty response');
+
+      // xrpl-connect and xrpl.js place the engine result in various locations
+      const engineResult: string | undefined =
+        result.engine_result ??
+        result.engineResult ??
+        result.result?.engine_result ??
+        result.result?.engineResult ??
+        result.meta?.TransactionResult ??
+        result.result?.meta?.TransactionResult;
+
+      // If we have an engine result and it's not tesSUCCESS, the tx failed
+      if (engineResult && engineResult !== 'tesSUCCESS') {
+        const engineMsg =
+          result.engine_result_message ??
+          result.engineResultMessage ??
+          result.result?.engine_result_message ??
+          '';
+
+        // Build a user-friendly message based on the tec code
+        const friendlyMessages: Record<string, string> = {
+          tecUNFUNDED_PAYMENT: 'Insufficient balance to complete this payment.',
+          tecPATH_DRY: 'No path available to deliver this payment. The recipient may not have a trust line for this currency.',
+          tecNO_LINE: 'The recipient does not have a trust line for this currency. They must set one up first.',
+          tecNO_DST: 'The destination account does not exist on the XRPL.',
+          tecNO_DST_INSUF_XRP: 'The destination account does not exist and the payment is not enough to fund it (minimum 10 XRP).',
+          tecNO_PERMISSION: 'You do not have permission to send to this account.',
+          tecINSUFFICIENT_RESERVE: 'This transaction would drop your balance below the account reserve.',
+          tecUNFUNDED_OFFER: 'Insufficient balance to create this offer.',
+          tecFROZEN: 'The trust line is frozen and cannot be used for payments.',
+          tecNO_LINE_INSUF_RESERVE: 'Cannot create trust line — insufficient XRP reserve.',
+        };
+
+        const friendly = friendlyMessages[engineResult];
+        const detail = friendly || engineMsg || engineResult;
+        throw new Error(`Transaction failed on ledger: ${detail}`);
+      }
+
+      return result;
+    };
+
     try {
       // Primary: use xrpl-connect's unified signAndSubmit
       // 2nd arg = true → wait for ledger validation (per context7 docs)
       // xrpl-connect v0.5.2 types only declare 1 arg, runtime accepts 2
       const result = await (walletManager as any).signAndSubmit(transaction, true);
-      if (!result) {
-        throw new Error('Wallet returned an empty response');
-      }
-      return result;
+      return validateResult(result);
     } catch (error: any) {
       const message = error?.message || String(error);
       console.warn('[WalletContext] signAndSubmit failed:', message);
@@ -305,7 +378,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             transaction,
             'SuzuPay Transaction',
           );
-          return { hash: result.hash, raw: result.raw };
+          return validateResult({ hash: result.hash, raw: result.raw });
         } catch (fallbackError: any) {
           if (fallbackError instanceof WalletRejectedError) {
             throw new Error('Transaction rejected — you declined the request.');

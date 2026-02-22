@@ -107,12 +107,12 @@ export function generateGenericPaymentRequest(
     version: '1.0',
     destination,
     amount,
-    amountDrops: xrpToDrops(amount),
+    amountDrops: (options?.currency && options.currency !== 'XRP') ? undefined : xrpToDrops(amount),
     currency: options?.currency || 'XRP',
     issuer: options?.issuer,
     memo: options?.memo,
     destinationTag: options?.destinationTag,
-    network: process.env.NEXT_PUBLIC_XRPL_NETWORK || 'testnet',
+    network: process.env.NEXT_PUBLIC_XRPL_NETWORK || 'mainnet',
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 min expiry
   };
@@ -194,8 +194,8 @@ export function parsePaymentRequest(qrData: string): {
  * Validate an XRPL address
  */
 export function isValidXRPLAddress(address: string): boolean {
-  // Basic validation: starts with 'r' and is 25-35 characters
-  return /^r[a-zA-Z0-9]{24,34}$/.test(address);
+  // XRPL uses base58check encoding — excludes 0, O, I, l
+  return /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/.test(address);
 }
 
 /**

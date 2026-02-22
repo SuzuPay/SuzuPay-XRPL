@@ -142,7 +142,7 @@ export default function Home() {
       <footer className="border-t border-surface-700 bg-surface-800/50 py-8">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm text-text-low">
-            © {new Date().getFullYear()} SuzuPay. Built for JFIIP Hackathon on XRPL Testnet.
+            © {new Date().getFullYear()} SuzuPay. Built for JFIIP Hackathon on XRPL Mainnet.
           </p>
         </div>
       </footer>

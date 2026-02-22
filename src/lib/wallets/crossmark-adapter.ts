@@ -38,7 +38,7 @@ export async function crossmarkConnect(): Promise<ConnectionResult> {
     const address = await crossmarkSignIn();
     return {
       address,
-      network: 'testnet', // Matches STANDARD_NETWORKS.testnet in wallet-context
+      network: 'mainnet', // Matches STANDARD_NETWORKS.mainnet in wallet-context
       walletName: 'CrossMark',
     };
   } catch (error: unknown) {

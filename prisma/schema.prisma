@@ -7,9 +7,23 @@ datasource db {
 }
 
 model Merchant {
-  id            String   @id @default(cuid())
-  walletAddress String   @unique
-  businessName  String
-  email         String?
-  createdAt     DateTime @default(now())
+  id              String           @id @default(cuid())
+  walletAddress   String           @unique
+  businessName    String
+  email           String?
+  createdAt       DateTime         @default(now())
+  paymentRequests PaymentRequest[]
+}
+
+model PaymentRequest {
+  id          String   @id @default(cuid())
+  merchantId  String
+  amount      String
+  currency    String
+  description String?
+  status      String   @default("pending")
+  txHash      String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+  merchant    Merchant @relation(fields: [merchantId], references: [id])
 }
