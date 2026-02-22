@@ -153,7 +153,7 @@ export default function PayPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-900">
+    <div className="min-h-screen bg-bg-900" suppressHydrationWarning>
       {/* Header */}
       <PageHeader title="Pay" icon />
 
@@ -217,7 +217,7 @@ export default function PayPage() {
                     <Button
                       onClick={handleParseQR}
                       disabled={!manualQRInput.trim()}
-                      className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 gap-2 transition-all hover:scale-[1.02]"
+                      className="w-full h-12 rounded-xl font-semibold bg-linear-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 gap-2 transition-all hover:scale-[1.02]"
                     >
                       <QrCode className="w-5 h-5" />
                       Parse Payment
@@ -242,7 +242,7 @@ export default function PayPage() {
                 {error && (
                   <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                     <CardContent className="p-4 flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+                      <AlertCircle className="w-5 h-5 text-error shrink-0 mt-0.5" />
                       <p className="text-error text-sm font-medium">{error}</p>
                     </CardContent>
                   </Card>
@@ -298,7 +298,7 @@ export default function PayPage() {
                   <Button
                     onClick={handleQuickPay}
                     disabled={!quickPayAddress || !quickPayAmount}
-                    className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 transition-all hover:scale-[1.02]"
+                    className="w-full h-12 rounded-xl font-semibold bg-linear-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 transition-all hover:scale-[1.02]"
                   >
                     Continue
                   </Button>
@@ -306,7 +306,7 @@ export default function PayPage() {
                   {error && (
                     <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-error shrink-0 mt-0.5" />
                         <p className="text-error text-sm font-medium">{error}</p>
                       </CardContent>
                     </Card>
@@ -354,7 +354,7 @@ export default function PayPage() {
                   {!hasSufficientBalance() && (
                     <Card className="glass-card border-l-4 border-l-[rgb(var(--color-warning))] bg-[rgb(var(--color-warning))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
                         <p className="text-warning text-sm font-medium">
                           Insufficient balance. You need at least {parsedPayment.amount} XRP + 3 XRP reserve.
                         </p>

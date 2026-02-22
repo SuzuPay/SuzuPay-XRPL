@@ -2,20 +2,31 @@
 
 /**
  * XRPL Wallet Context
- * Provides wallet connection state throughout the app using xrpl-connect
+ *
+ * Provides wallet connection state throughout the app using xrpl-connect.
+ * Supports multiple wallet adapters: CrossMark, Xaman, Ledger, WalletConnect.
+ *
+ * @see context7: /xrpl-commons/xrpl-connect (benchmark 96.6)
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { WalletManager, Adapters, STANDARD_NETWORKS } from 'xrpl-connect';
 import type { Account } from 'xrpl-connect';
-import {
-  isCrossmarkInstalled,
-  crossmarkSignAndSubmit,
-  CrossmarkRejectedError,
-  CrossmarkExpiredError,
-} from './crossmark-sdk';
 
-// Wallet state interface
+import {
+  createDefaultRegistry,
+  crossmarkConnect,
+  crossmarkSignAndSubmitTx,
+  getXamanApiKey,
+  getWalletConnectProjectId,
+  WalletRejectedError,
+  WalletTimeoutError,
+} from './wallets';
+import type { RegisteredAdapter, ConnectionResult, SignResult } from './wallets';
+import { isCrossmarkInstalled } from './crossmark-sdk';
+
+// ── State Types ──────────────────────────────────────────────────────
+
 interface WalletState {
   isConnected: boolean;
   isConnecting: boolean;
@@ -24,16 +35,16 @@ interface WalletState {
   walletName: string | null;
   balance: string | null;
   error: string | null;
+  activeWalletId: string | null;
 }
 
-// Context interface
 interface WalletContextType extends WalletState {
   walletManager: WalletManager | null;
   connect: (walletId?: string) => Promise<void>;
   disconnect: () => Promise<void>;
   signAndSubmit: (transaction: any) => Promise<any>;
   refreshBalance: () => Promise<void>;
-  availableWallets: string[];
+  availableAdapters: RegisteredAdapter[];
 }
 
 const initialState: WalletState = {
@@ -44,56 +55,79 @@ const initialState: WalletState = {
   walletName: null,
   balance: null,
   error: null,
+  activeWalletId: null,
 };
 
 const WalletContext = createContext<WalletContextType | null>(null);
 
-// Initialize WalletManager
-function createWalletManager(): WalletManager {
-  const adapters = [];
+// ── Wallet Manager Factory ───────────────────────────────────────────
 
-  // Add Xaman adapter if API key is available
-  const xamanApiKey = process.env.NEXT_PUBLIC_XAMAN_API_KEY;
+/**
+ * Build xrpl-connect WalletManager with all available adapters.
+ * Only adds adapters that have the required config (API keys, etc).
+ */
+function createWalletManager() {
+  const adapters = [];
+  const registeredIds: string[] = [];
+
+  // CrossMark — always register; xrpl-connect handles extension detection
+  adapters.push(new Adapters.Crossmark());
+  registeredIds.push('crossmark');
+
+  // Xaman — requires API key
+  const xamanApiKey = getXamanApiKey();
   if (xamanApiKey) {
     adapters.push(new Adapters.Xaman({ apiKey: xamanApiKey }));
+    registeredIds.push('xaman');
   }
 
-  // Add Crossmark adapter only if extension is installed
-  if (isCrossmarkInstalled()) {
-    adapters.push(new Adapters.Crossmark());
-  } else {
-    console.info('[WalletContext] Crossmark extension not detected, skipping adapter');
-  }
-
-  // Add WalletConnect if project ID is available
-  const walletConnectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
+  // WalletConnect — requires project ID
+  const walletConnectId = getWalletConnectProjectId();
   if (walletConnectId) {
     adapters.push(new Adapters.WalletConnect({ projectId: walletConnectId }));
+    registeredIds.push('walletconnect');
   }
 
-  // Fallback: if no adapters configured, add Crossmark anyway (connection will fail gracefully)
-  if (adapters.length === 0) {
-    adapters.push(new Adapters.Crossmark());
+  // Ledger — requires WebUSB support
+  if (typeof window !== 'undefined' && (navigator as any)?.usb) {
+    try {
+      adapters.push(new Adapters.Ledger());
+      registeredIds.push('ledger');
+    } catch {
+      console.info('[WalletContext] Ledger adapter initialization failed, skipping');
+    }
   }
 
-  return new WalletManager({
+  const manager = new WalletManager({
     adapters,
     network: STANDARD_NETWORKS.testnet,
     autoConnect: true,
     logger: { level: 'info' },
   });
+
+  return { manager, registeredIds };
 }
+
+// ── Provider ─────────────────────────────────────────────────────────
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [walletManager, setWalletManager] = useState<WalletManager | null>(null);
   const [state, setState] = useState<WalletState>(initialState);
+  const [availableAdapters, setAvailableAdapters] = useState<RegisteredAdapter[]>([]);
 
-  // Initialize wallet manager
+  // Initialize wallet manager + adapter registry
   useEffect(() => {
-    const manager = createWalletManager();
+    const { manager, registeredIds } = createWalletManager();
     setWalletManager(manager);
 
-    // Event handlers
+    // Build adapter registry for UI — only show adapters that exist in WalletManager
+    const registry = createDefaultRegistry();
+    const allAdapters = registry.getAll();
+    // Filter to only adapters that were actually registered with xrpl-connect
+    const syncedAdapters = allAdapters.filter(a => registeredIds.includes(a.id));
+    setAvailableAdapters(syncedAdapters);
+
+    // ── Event Handlers ──────────────────────────────────────────────
     const handleConnect = (account: Account) => {
       setState(prev => ({
         ...prev,
@@ -102,6 +136,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         address: account.address,
         network: account.network?.name || 'testnet',
         walletName: manager.wallet?.name || 'Unknown',
+        activeWalletId: manager.wallet?.id || null,
         error: null,
       }));
     };
@@ -114,6 +149,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         network: null,
         walletName: null,
         balance: null,
+        activeWalletId: null,
       }));
     };
 
@@ -125,11 +161,31 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }));
     };
 
+    // Per xrpl-connect docs: accountChange and networkChange events
+    const handleAccountChange = (account: Account) => {
+      setState(prev => ({
+        ...prev,
+        address: account.address,
+        walletName: manager.wallet?.name || prev.walletName,
+      }));
+    };
+
+    const handleNetworkChange = (network: any) => {
+      setState(prev => ({
+        ...prev,
+        network: network?.name || prev.network,
+      }));
+    };
+
     manager.on('connect', handleConnect);
     manager.on('disconnect', handleDisconnect);
     manager.on('error', handleError);
+    // xrpl-connect v0.5.2 types are incomplete — these events exist at runtime
+    // (confirmed via context7: /xrpl-commons/xrpl-connect api-reference.md)
+    (manager as any).on('accountChange', handleAccountChange);
+    (manager as any).on('networkChange', handleNetworkChange);
 
-    // Check if already connected
+    // Check if already connected (e.g. autoConnect)
     if (manager.connected && manager.account) {
       handleConnect(manager.account);
     }
@@ -138,58 +194,56 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       manager.off('connect', handleConnect);
       manager.off('disconnect', handleDisconnect);
       manager.off('error', handleError);
+      (manager as any).off('accountChange', handleAccountChange);
+      (manager as any).off('networkChange', handleNetworkChange);
     };
   }, []);
 
-  // Connect wallet
+  // ── Connect ───────────────────────────────────────────────────────
+
   const connect = useCallback(async (walletId?: string) => {
     if (!walletManager) return;
-    
+
     setState(prev => ({ ...prev, isConnecting: true, error: null }));
+
     try {
-      // Get available wallets and use the first one if no walletId provided
+      // Determine which wallet to connect
       const wallets = walletManager.wallets || [];
       const defaultWalletId = wallets.length > 0 ? wallets[0].id : 'crossmark';
       const targetWalletId = walletId || defaultWalletId;
-      
+
       console.log('[WalletContext] Connecting to wallet:', targetWalletId);
-      
-      // Attempt connection via wallet manager
-      const result = await walletManager.connect(targetWalletId);
-      
-      // Validation: Ensure we actually got a connected account
+
+      // Primary: use xrpl-connect's unified connect
+      await walletManager.connect(targetWalletId);
+
       if (!walletManager.account?.address) {
         throw new Error('No address returned from wallet connection');
       }
-
     } catch (error: any) {
-      console.error('[WalletContext] Connection error:', error);
-      
-      // ── Crossmark Connect Fallback ────────────────────────────────
-      // If xrpl-connect fails to get the address (common with Crossmark),
-      // try to connect directly using the SDK wrapper.
+      console.warn('[WalletContext] xrpl-connect failed, trying direct adapter:', error.message);
+
+      // CrossMark direct SDK fallback (known xrpl-connect interop issue)
       if (isCrossmarkInstalled() && (walletId === 'crossmark' || !walletId)) {
-        console.log('[WalletContext] Attempting direct Crossmark sign-in fallback...');
         try {
-          const { crossmarkSignIn } = await import('./crossmark-sdk');
-          const address = await crossmarkSignIn();
-          
-          if (address) {
-            console.log('[WalletContext] Direct Crossmark sign-in successful:', address);
-            // Manually update state since walletManager won't emit the event
-            setState(prev => ({
-              ...prev,
-              isConnected: true,
-              isConnecting: false,
-              address: address,
-              network: 'mainnet', // Crossmark usually defaults to mainnet, or we can check
-              walletName: 'Crossmark',
-              error: null,
-            }));
+          const result: ConnectionResult = await crossmarkConnect();
+          setState(prev => ({
+            ...prev,
+            isConnected: true,
+            isConnecting: false,
+            address: result.address,
+            network: result.network,
+            walletName: result.walletName,
+            activeWalletId: 'crossmark',
+            error: null,
+          }));
+          return;
+        } catch (fallbackError: any) {
+          if (fallbackError instanceof WalletRejectedError) {
+            setState(prev => ({ ...prev, isConnecting: false, error: 'Connection rejected' }));
             return;
           }
-        } catch (fallbackError) {
-          console.error('[WalletContext] Direct Crossmark sign-in also failed:', fallbackError);
+          console.error('[WalletContext] CrossMark fallback failed:', fallbackError.message);
         }
       }
 
@@ -201,71 +255,74 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [walletManager]);
 
-  // Disconnect wallet
+  // ── Disconnect ────────────────────────────────────────────────────
+
   const disconnect = useCallback(async () => {
     if (!walletManager) return;
-    
+
     try {
       await walletManager.disconnect();
     } catch (error: any) {
-      console.error('Disconnect error:', error);
+      console.error('[WalletContext] Disconnect error:', error.message);
     }
+    // Always reset state (even on error) for clean disconnect UX
+    setState(prev => ({
+      ...prev,
+      isConnected: false,
+      address: null,
+      network: null,
+      walletName: null,
+      balance: null,
+      activeWalletId: null,
+    }));
   }, [walletManager]);
 
-  // Sign and submit transaction
+  // ── Sign & Submit ─────────────────────────────────────────────────
+
   const signAndSubmit = useCallback(async (transaction: any) => {
-    if (!walletManager || !walletManager.connected) {
+    if (!walletManager || !state.isConnected) {
       throw new Error('Wallet not connected');
     }
 
     try {
-      // Primary path: use xrpl-connect's signAndSubmit
-      const result = await (walletManager as any).signAndSubmit(transaction);
-
+      // Primary: use xrpl-connect's unified signAndSubmit
+      // 2nd arg = true → wait for ledger validation (per context7 docs)
+      // xrpl-connect v0.5.2 types only declare 1 arg, runtime accepts 2
+      const result = await (walletManager as any).signAndSubmit(transaction, true);
       if (!result) {
         throw new Error('Wallet returned an empty response');
       }
-
       return result;
     } catch (error: any) {
       const message = error?.message || String(error);
-      console.warn('[WalletContext] xrpl-connect signAndSubmit failed:', message);
+      console.warn('[WalletContext] signAndSubmit failed:', message);
 
-      // ── Crossmark SDK Fix ──────────────────────────────────────────
-      // Check for known xrpl-connect/Crossmark bug: "Cannot read properties of undefined (reading 'result')"
-      // OR if Crossmark is explicitly detected.
-      const isKnownCrossmarkBug = message.includes('Cannot read properties of undefined') && message.includes('result');
-      
-      if (isCrossmarkInstalled() || isKnownCrossmarkBug) {
+      // CrossMark direct SDK fallback — only when CrossMark is the active wallet
+      // (was previously triggering for all wallets if CrossMark extension installed)
+      if (state.activeWalletId === 'crossmark') {
         try {
-          console.log('[WalletContext] Attempting Crossmark SDK fallback...');
-          // Import dynamically if needed, or use the one we have
-          const sdkResult = await crossmarkSignAndSubmit(transaction, 'SuzuPay Transaction');
-          
-          return {
-            hash: sdkResult.hash,
-            raw: sdkResult.raw || sdkResult.meta
-          };
+          const result: SignResult = await crossmarkSignAndSubmitTx(
+            transaction,
+            'SuzuPay Transaction',
+          );
+          return { hash: result.hash, raw: result.raw };
         } catch (fallbackError: any) {
-          // Surface user-facing rejection/expiry as distinct errors
-          if (fallbackError instanceof CrossmarkRejectedError) {
-            throw new Error('Transaction rejected — you declined the request in Crossmark.');
+          if (fallbackError instanceof WalletRejectedError) {
+            throw new Error('Transaction rejected — you declined the request.');
           }
-          if (fallbackError instanceof CrossmarkExpiredError) {
-            throw new Error('Transaction expired — the Crossmark approval window timed out.');
+          if (fallbackError instanceof WalletTimeoutError) {
+            throw new Error('Transaction expired — the approval window timed out.');
           }
-          console.error('[WalletContext] Crossmark SDK fallback failed:', fallbackError);
-          // If fallback fails, throw the fallback error, not the original
           throw fallbackError;
         }
       }
 
-      console.error('[WalletContext] Transaction error (no fallback available):', error);
       throw error;
     }
-  }, [walletManager]);
+  }, [walletManager, state.isConnected, state.activeWalletId]);
 
-  // Refresh balance
+  // ── Balance ───────────────────────────────────────────────────────
+
   const refreshBalance = useCallback(async () => {
     if (!state.address) return;
 
@@ -274,12 +331,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       const balance = await getBalance(state.address);
       setState(prev => ({ ...prev, balance }));
     } catch (error: any) {
-      // Handle unfunded accounts gracefully (common on testnet)
       if (error?.message?.includes('Account not found') || error?.data?.error === 'actNotFound') {
-        console.log('[WalletContext] Account not funded yet, setting balance to 0');
         setState(prev => ({ ...prev, balance: '0' }));
       } else {
-        console.error('Failed to fetch balance:', error);
+        console.error('[WalletContext] Failed to fetch balance:', error.message);
       }
     }
   }, [state.address]);
@@ -291,35 +346,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [state.isConnected, state.address, refreshBalance]);
 
-  // Ensure Crossmark approval panel can scroll by avoiding any page scroll locks
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const crossmark = (window as any)?.xrpl?.crossmark;
-    if (!crossmark?.on) return;
-
-    const enableScroll = () => {
-      document.documentElement.classList.add('crossmark-open');
-      document.body.classList.add('crossmark-open');
-    };
-
-    const disableScroll = () => {
-      document.documentElement.classList.remove('crossmark-open');
-      document.body.classList.remove('crossmark-open');
-    };
-
-    crossmark.on('open', enableScroll);
-    crossmark.on('close', disableScroll);
-
-    return () => {
-      crossmark.off?.('open', enableScroll);
-      crossmark.off?.('close', disableScroll);
-      disableScroll();
-    };
-  }, []);
-
-  // Get available wallet IDs from wallets array
-  const availableWallets = walletManager?.wallets?.map((w: any) => w.id) || ['crossmark'];
+  // ── Context Value ─────────────────────────────────────────────────
 
   const contextValue: WalletContextType = {
     ...state,
@@ -328,7 +355,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     disconnect,
     signAndSubmit,
     refreshBalance,
-    availableWallets,
+    availableAdapters,
   };
 
   return (
@@ -338,7 +365,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Hook to use wallet context
+// ── Hook ─────────────────────────────────────────────────────────────
+
 export function useWallet() {
   const context = useContext(WalletContext);
   if (!context) {

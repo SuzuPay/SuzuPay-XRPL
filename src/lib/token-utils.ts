@@ -13,17 +13,27 @@ import {
 } from 'xrpl';
 import { getClient } from './xrpl-client';
 
+const XRPL_CLASSIC_ADDRESS_REGEX = /^r[1-9A-HJ-NP-Za-km-z]{24,34}$/;
+
+function isValidClassicAddress(address: string): boolean {
+  return XRPL_CLASSIC_ADDRESS_REGEX.test((address || '').trim());
+}
+
 export interface TokenInfo {
   currency: string;
   issuer: string;
   value: string;
 }
 
-// ── RLUSD Configuration ──────────────────────────────────────────────────
+// XRPL requires non-3-char currency codes as 40-char hex strings
+// 'RLUSD' → ASCII hex 524C555344 → padded to 40 chars
+const RLUSD_CURRENCY_HEX = '524C555344' + '0'.repeat(30); // 40 chars total
+
 export const RLUSD_CONFIG: TokenInfo = {
-  currency: 'RLUSD',
-  // Default to Testnet issuer if environment variable is not explicitly set
-  issuer: process.env.NEXT_PUBLIC_RLUSD_ISSUER || process.env.NEXT_PUBLIC_RLUSD_ISSUER_TESTNET || 'rQhWct2VNDRj1toKchXEqEUNyHkE5y14Wz',
+  currency: RLUSD_CURRENCY_HEX,
+  // Correct testnet issuer from Ripple official docs:
+  // https://stablecoin.redocly.app/products/stablecoin/developer-resources/rlusd-on-the-xrpl
+  issuer: process.env.NEXT_PUBLIC_RLUSD_ISSUER || process.env.NEXT_PUBLIC_RLUSD_ISSUER_TESTNET || 'rQhWct2fv4Vc4KRjRgMrxa8xPN9Zx9iLKV',
   value: '0' // For TokenInfo compatibility
 };
 
@@ -34,6 +44,10 @@ export const RLUSD_CONFIG: TokenInfo = {
  * This is required for users to trade the merchant's tokens freely.
  */
 export async function ensureDefaultRipple(address: string): Promise<AccountSet | null> {
+  if (!isValidClassicAddress(address)) {
+    throw new Error('Invalid XRPL account address');
+  }
+
   const client = await getClient();
   
   const accountInfo = await client.request({
@@ -69,6 +83,11 @@ export async function hasTrustLine(
   userAddress: string, 
   token: TokenInfo
 ): Promise<boolean> {
+  if (!isValidClassicAddress(userAddress) || !isValidClassicAddress(token.issuer)) {
+    console.warn('Failed to check trust lines: invalid XRPL address format');
+    return false;
+  }
+
   const client = await getClient();
   
   try {
@@ -160,6 +179,11 @@ export async function getTokenSellOffers(
   merchantAddress: string,
   currencyCode: string = 'SZP'
 ): Promise<any[]> {
+  if (!isValidClassicAddress(merchantAddress)) {
+    console.warn('Failed to fetch sell offers: invalid merchant address format');
+    return [];
+  }
+
   const client = await getClient();
   
   try {
@@ -192,6 +216,11 @@ export async function getTokenSellOffers(
  * Fetches all token balances for an account.
  */
 export async function getAccountTokens(address: string): Promise<TokenInfo[]> {
+  if (!isValidClassicAddress(address)) {
+    console.warn('Failed to fetch account tokens: invalid XRPL address format');
+    return [];
+  }
+
   const client = await getClient();
   
   try {

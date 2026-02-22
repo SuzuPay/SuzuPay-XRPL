@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-bg-900">
+    <div className="min-h-screen flex flex-col bg-bg-900" suppressHydrationWarning>
       {/* ─── Header ─── */}
       <header className="border-b border-surface-700 bg-surface-800/60 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">

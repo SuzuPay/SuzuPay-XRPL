@@ -1,12 +1,15 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Wallet, LogOut, Loader2 } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { truncateAddress, formatXRP } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { WalletSelectorModal } from '@/components/wallet-selector-modal';
 
 export function WalletConnectButton() {
+  const [mounted, setMounted] = useState(false);
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const {
     isConnected,
     isConnecting,
@@ -14,9 +17,24 @@ export function WalletConnectButton() {
     walletName,
     balance,
     error,
-    connect,
     disconnect,
   } = useWallet();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return (
+      <Button
+        className="gap-2 gradient-primary text-white rounded-xl font-bold shadow-lg"
+        disabled
+      >
+        <Wallet className="w-4 h-4" />
+        <span>Connect Wallet</span>
+      </Button>
+    );
+  }
 
   if (isConnecting) {
     return (
@@ -58,7 +76,7 @@ export function WalletConnectButton() {
   return (
     <div className="flex flex-col items-end group">
       <Button
-        onClick={() => connect()}
+        onClick={() => setSelectorOpen(true)}
         className="gap-2 gradient-primary text-white rounded-xl font-bold shadow-lg glow-primary hover:scale-105 active:scale-95 transition-all duration-300 border border-white/10"
       >
         <Wallet className="w-4 h-4 group-hover:rotate-12 transition-transform duration-300" />
@@ -69,6 +87,11 @@ export function WalletConnectButton() {
           {error}
         </span>
       )}
+
+      <WalletSelectorModal
+        open={selectorOpen}
+        onOpenChange={setSelectorOpen}
+      />
     </div>
   );
 }

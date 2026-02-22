@@ -35,7 +35,7 @@ export function PageHeader({ title, icon, showLogo = false, iconBg }: PageHeader
   };
 
   return (
-    <header className="border-b border-surface-700 bg-surface-800/60 backdrop-blur-md sticky top-0 z-50">
+    <header suppressHydrationWarning className="border-b border-surface-700 bg-surface-800/60 backdrop-blur-md sticky top-0 z-50">
       <div className="container mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center gap-4">
           <Link href="/" className="p-2 rounded-lg hover:bg-surface-700 transition-colors">

@@ -18,10 +18,12 @@ export async function GET(
     });
 
     if (!merchant) {
-      return NextResponse.json({ error: "Merchant not found" }, { status: 404 });
+      // Return 200 for "not registered yet" to avoid noisy browser console
+      // resource errors for an expected first-time merchant flow.
+      return NextResponse.json({ exists: false, merchant: null });
     }
 
-    return NextResponse.json(merchant);
+    return NextResponse.json({ exists: true, merchant });
   } catch (err: any) {
     console.error("GET merchant error:", err);
     return NextResponse.json({ error: "Failed to fetch merchant" }, { status: 500 });
