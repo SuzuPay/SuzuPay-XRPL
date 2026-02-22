@@ -78,3 +78,7 @@ build/
 *.db-journal
 dev.db
 dev.db-journal
+
+# Documentation and Agent files
+.agent/
+Docs/
