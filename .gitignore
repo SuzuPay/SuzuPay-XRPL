@@ -70,3 +70,15 @@ build/
 # Temporary files
 *.tmp
 *.temp
+
+/src/generated/prisma
+
+# SQLite database
+*.db
+*.db-journal
+dev.db
+dev.db-journal
+
+# Documentation and Agent files
+.agent/
+Docs/

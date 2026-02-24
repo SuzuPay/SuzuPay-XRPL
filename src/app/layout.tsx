@@ -18,6 +18,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SuzuPay - XRPL Payment Solution",
   description: "Fast, secure QR payments and merchant financing on the XRP Ledger",
+  other: {
+    "darkreader-lock": "true",
+  },
 };
 
 export default function RootLayout({
@@ -29,6 +32,7 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={`${urbanist.variable} ${geistMono.variable} antialiased min-h-screen`}
+        suppressHydrationWarning
       >
         <Providers>{children}</Providers>
       </body>

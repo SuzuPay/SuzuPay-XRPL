@@ -46,7 +46,7 @@ export function PaymentConfirmation({
               <div className="flex justify-between items-center">
                 <span className="text-text-low text-sm font-medium uppercase tracking-wider">Transaction</span>
                 <a
-                  href={`https://testnet.xrpl.org/transactions/${txHash}`}
+                  href={`https://livenet.xrpl.org/transactions/${txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary-500 hover:text-primary-400 text-xs font-bold flex items-center gap-1.5 transition-colors bg-primary-500/10 px-3 py-1.5 rounded-full hover:bg-primary-500/20"

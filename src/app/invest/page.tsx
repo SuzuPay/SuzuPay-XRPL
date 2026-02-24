@@ -150,7 +150,7 @@ export default function InvestPage() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-900">
+    <div className="min-h-screen bg-bg-900" suppressHydrationWarning>
       {/* Header */}
       <PageHeader
         title="Invest"

@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex flex-col bg-bg-900">
+    <div className="min-h-screen flex flex-col bg-bg-900" suppressHydrationWarning>
       {/* ─── Header ─── */}
       <header className="border-b border-surface-700 bg-surface-800/60 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
@@ -142,7 +142,7 @@ export default function Home() {
       <footer className="border-t border-surface-700 bg-surface-800/50 py-8">
         <div className="container mx-auto px-4 text-center">
           <p className="text-sm text-text-low">
-            © {new Date().getFullYear()} SuzuPay. Built for JFIIP Hackathon on XRPL Testnet.
+            © {new Date().getFullYear()} SuzuPay. Built for JFIIP Hackathon on XRPL Mainnet.
           </p>
         </div>
       </footer>

@@ -6,6 +6,7 @@ interface QRGeneratorProps {
   destination: string;
   amount: string;
   currency?: string;
+  issuer?: string;
   destinationTag?: number;
   size?: number;
   type?: 'xaman' | 'generic';
@@ -15,6 +16,7 @@ export function QRGenerator({
   destination, 
   amount, 
   currency = 'XRP', 
+  issuer,
   destinationTag,
   size = 256,
   type = 'xaman'
@@ -25,6 +27,7 @@ export function QRGenerator({
   if (type === 'xaman') {
     const { url } = generateXamanPaymentURL(destination, amount, {
       currency,
+      issuer,
       destinationTag,
       network: 'XRPL'
     });
@@ -32,6 +35,7 @@ export function QRGenerator({
   } else {
     qrData = generateGenericPaymentRequest(destination, amount, {
       currency,
+      issuer,
       destinationTag
     });
   }

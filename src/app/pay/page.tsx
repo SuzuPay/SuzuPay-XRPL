@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Wallet, QrCode, Send, AlertCircle, Loader2, Camera } from 'lucide-react';
 import { useWallet } from '@/lib/wallet-context';
 import { PageHeader } from '@/components/page-header';
@@ -8,6 +8,7 @@ import { WalletConnectButton } from '@/components/wallet-connect-button';
 import { truncateAddress, formatXRP } from '@/lib/utils';
 import { parsePaymentRequest, isValidXRPLAddress } from '@/lib/payment-request';
 import { buildPaymentTx } from '@/lib/payment';
+import { hasTrustLine, RLUSD_CONFIG, constructTrustSetTx } from '@/lib/token-utils';
 import { PaymentConfirmation } from '@/components/payment-confirmation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,6 +21,7 @@ interface ParsedPayment {
   destination: string;
   amount: string;
   currency: string;
+  issuer?: string;
   memo?: string;
   isXamanURL: boolean;
 }
@@ -38,6 +40,45 @@ export default function PayPage() {
   const [quickPayMode, setQuickPayMode] = useState(false);
   const [quickPayAddress, setQuickPayAddress] = useState('');
   const [quickPayAmount, setQuickPayAmount] = useState('');
+
+  // Trustline state
+  const [hasSenderTrustline, setHasSenderTrustline] = useState<boolean | null>(null);
+  const [isEnablingTrustline, setIsEnablingTrustline] = useState(false);
+
+  // Check sender trustline when payment is parsed
+  useEffect(() => {
+    let cancelled = false;
+    if (parsedPayment && parsedPayment.currency !== 'XRP' && parsedPayment.issuer && address) {
+      const tokenInfo = { currency: parsedPayment.currency, issuer: parsedPayment.issuer, value: '0' };
+      hasTrustLine(address, tokenInfo).then(res => {
+        if (!cancelled) setHasSenderTrustline(res);
+      }).catch(err => {
+        console.error('Error checking trustline:', err);
+        if (!cancelled) setHasSenderTrustline(false);
+      });
+    } else {
+      setHasSenderTrustline(null);
+    }
+    return () => { cancelled = true; };
+  }, [parsedPayment, address]);
+
+  const handleEnableTrustline = async () => {
+    if (!parsedPayment || !parsedPayment.issuer || !address) return;
+    setIsEnablingTrustline(true);
+    setError(null);
+    try {
+      const tokenInfo = { currency: parsedPayment.currency, issuer: parsedPayment.issuer, value: '0' };
+      const tx = constructTrustSetTx(address, tokenInfo);
+      await signAndSubmit(tx);
+      setHasSenderTrustline(true);
+    } catch (err) {
+      console.error("Failed to enable trustline", err);
+      // Surface error to user
+      setError(err instanceof Error ? err.message : 'Failed to enable trustline.');
+    } finally {
+      setIsEnablingTrustline(false);
+    }
+  };
 
   // Parse QR input
   const handleParseQR = () => {
@@ -62,6 +103,7 @@ export default function PayPage() {
       destination: parsed.destination,
       amount: parsed.amount,
       currency: parsed.currency || 'XRP',
+      issuer: parsed.issuer,
       memo: parsed.memo,
       isXamanURL: parsed.isXamanURL,
     });
@@ -101,25 +143,47 @@ export default function PayPage() {
     try {
       setStatus('signing');
 
+      // Pre-flight check: for RLUSD payments, verify trust lines exist
+      if (parsedPayment.currency !== 'XRP' && parsedPayment.issuer) {
+        const tokenInfo = { currency: parsedPayment.currency, issuer: parsedPayment.issuer, value: '0' };
+        const [senderHasTL, recipientHasTL] = await Promise.all([
+          hasTrustLine(address, tokenInfo).catch(() => false),
+          hasTrustLine(parsedPayment.destination, tokenInfo).catch(() => false),
+        ]);
+
+        if (!senderHasTL) {
+          throw new Error('You don\'t have a trust line for this currency. Please set one up in your wallet first.');
+        }
+        if (!recipientHasTL) {
+          throw new Error('The recipient does not have a trust line for this currency. They must set one up before receiving this payment.');
+        }
+      }
+
       const payment = buildPaymentTx({
         source: address,
         destination: parsedPayment.destination,
         amount: parsedPayment.amount,
-        currency: 'XRP',
+        currency: parsedPayment.currency,
+        issuer: parsedPayment.issuer,
         memo: parsedPayment.memo
       });
 
       const result = await signAndSubmit(payment);
 
-      if (result?.hash) {
-        setTxHash(result.hash);
+      // Extract hash from various result shapes
+      const hash = result?.hash ?? result?.result?.hash ?? result?.tx_json?.hash;
+
+      if (hash) {
+        setTxHash(hash);
         setStatus('success');
       } else {
-        throw new Error('Transaction failed - no hash returned');
+        throw new Error('Transaction completed but no hash was returned.');
       }
     } catch (err: unknown) {
       console.error('Payment error:', err);
-      setError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
+      const msg = err instanceof Error ? err.message : 'Payment failed. Please try again.';
+      // Surface the error — validateResult in wallet-context already provides friendly messages
+      setError(msg);
       setStatus('error');
     }
   };
@@ -134,18 +198,24 @@ export default function PayPage() {
     setQuickPayAddress('');
     setQuickPayAmount('');
     setQuickPayMode(false);
+    setHasSenderTrustline(null);
   };
 
   // Check balance is sufficient
   const hasSufficientBalance = () => {
     if (!balance || !parsedPayment) return false;
+    
+    // For hackathon scope, bypass strict balance checks for issued currencies 
+    // since we can't synchronously check non-XRP token balance easily here.
+    if (parsedPayment.currency !== 'XRP') return true;
+
     const balanceNum = parseFloat(balance);
     const amountNum = parseFloat(parsedPayment.amount);
-    return balanceNum >= amountNum + 3.00001;
+    return balanceNum >= amountNum + 0.000015; // Network fee buffer
   };
 
   return (
-    <div className="min-h-screen bg-bg-900">
+    <div className="min-h-screen bg-bg-900" suppressHydrationWarning>
       {/* Header */}
       <PageHeader title="Pay" icon />
 
@@ -209,7 +279,7 @@ export default function PayPage() {
                     <Button
                       onClick={handleParseQR}
                       disabled={!manualQRInput.trim()}
-                      className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 gap-2 transition-all hover:scale-[1.02]"
+                      className="w-full h-12 rounded-xl font-semibold bg-linear-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 gap-2 transition-all hover:scale-[1.02]"
                     >
                       <QrCode className="w-5 h-5" />
                       Parse Payment
@@ -234,7 +304,7 @@ export default function PayPage() {
                 {error && (
                   <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                     <CardContent className="p-4 flex items-start gap-3">
-                      <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+                      <AlertCircle className="w-5 h-5 text-error shrink-0 mt-0.5" />
                       <p className="text-error text-sm font-medium">{error}</p>
                     </CardContent>
                   </Card>
@@ -290,7 +360,7 @@ export default function PayPage() {
                   <Button
                     onClick={handleQuickPay}
                     disabled={!quickPayAddress || !quickPayAmount}
-                    className="w-full h-12 rounded-xl font-semibold bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 transition-all hover:scale-[1.02]"
+                    className="w-full h-12 rounded-xl font-semibold bg-linear-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg shadow-primary-500/20 transition-all hover:scale-[1.02]"
                   >
                     Continue
                   </Button>
@@ -298,7 +368,7 @@ export default function PayPage() {
                   {error && (
                     <Card className="glass-card border-l-4 border-l-[rgb(var(--color-error))] bg-[rgb(var(--color-error))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-error shrink-0 mt-0.5" />
                         <p className="text-error text-sm font-medium">{error}</p>
                       </CardContent>
                     </Card>
@@ -343,12 +413,34 @@ export default function PayPage() {
                     </div>
                   </div>
 
+                  {hasSenderTrustline === false && (
+                    <div className="p-4 bg-[rgb(var(--color-warning))]/10 border border-[rgb(var(--color-warning))]/20 rounded-xl mb-4 animate-fade-in shadow-inner">
+                      <h4 className="font-semibold text-[rgb(var(--color-warning))] mb-2 flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 shrink-0" />
+                        {parsedPayment.currency} Not Enabled
+                      </h4>
+                      <p className="text-sm text-text-med mb-4 px-1 leading-relaxed">You need to establish a trustline to send {parsedPayment.currency} payments.</p>
+                      <Button 
+                        onClick={handleEnableTrustline} 
+                        disabled={isEnablingTrustline}
+                        className="w-full h-11 bg-[rgb(var(--color-warning))] hover:bg-[rgb(var(--color-warning))]/90 text-black font-bold shadow-lg shadow-[rgb(var(--color-warning))]/20 transition-all active:scale-95"
+                      >
+                        {isEnablingTrustline ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Enabling...
+                          </>
+                        ) : `Enable ${parsedPayment.currency} Trustline`}
+                      </Button>
+                    </div>
+                  )}
+
                   {!hasSufficientBalance() && (
                     <Card className="glass-card border-l-4 border-l-[rgb(var(--color-warning))] bg-[rgb(var(--color-warning))]/5">
                       <CardContent className="p-4 flex items-start gap-3">
-                        <AlertCircle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="w-5 h-5 text-warning shrink-0 mt-0.5" />
                         <p className="text-warning text-sm font-medium">
-                          Insufficient balance. You need at least {parsedPayment.amount} XRP + 3 XRP reserve.
+                          Insufficient balance.
                         </p>
                       </CardContent>
                     </Card>
@@ -364,7 +456,7 @@ export default function PayPage() {
                     </Button>
                     <Button
                       onClick={handleConfirmPayment}
-                      disabled={!hasSufficientBalance()}
+                      disabled={!hasSufficientBalance() || hasSenderTrustline === false}
                       className="h-12 rounded-xl font-bold bg-primary-500 hover:bg-primary-600 text-white gap-2 shadow-lg shadow-primary-500/20 transition-all hover:scale-105"
                     >
                       <Send className="w-4 h-4" />

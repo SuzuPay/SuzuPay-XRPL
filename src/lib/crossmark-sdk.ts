@@ -147,8 +147,9 @@ export async function crossmarkSignAndSubmit(
   }
 
   if (meta.isFail || meta.isError) {
+    const errorMsg = data?.errorMessage || data?.resp?.result?.errorMessage || 'Unknown error';
     throw new Error(
-      `Crossmark transaction failed: ${JSON.stringify(data?.resp?.result ?? data)}`,
+      `Crossmark transaction failed: ${errorMsg}`,
     );
   }
 
